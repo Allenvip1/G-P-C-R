@@ -84,7 +84,7 @@
 // 按表头名称解析
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  // 🎯 完美修复此处：加上了关键的 [0] 索引，彻底恢复前端数据解析引擎！
+  // 🎯 终极修复：完美补齐 [0]，恢复读取第一行表头字段功能！
   const head = lines[0].split(",").map(s => s.trim());
   const col = n => head.indexOf(n);
   const num = (c, n) => {
@@ -166,12 +166,13 @@ function makePanel(elId, color, title, pts) {
   return { el, chart, pts, up, lo, mid };
 }
 
+// 🎯 稳妥兼容机制
 function series(rows, metal, key) {
-  return rows.filter(r => isFinite(r[metal][key])).map(r => ({ time: r.date, value: r[metal][key] }));
+  return rows.filter(r => r[metal] && isFinite(r[metal][key])).map(r => ({ time: r.date, value: r[metal][key] }));
 }
 
 function fillTable(id, rows, metal) {
-  const rs = rows.filter(r => isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
+  const rs = rows.filter(r => r[metal] && isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
   const head = "<thead><tr><th>日期</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
   if (!rs.length) { $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>'; return; }
   $(id).innerHTML = head + "<tbody>" + rs.map(r => {
@@ -189,6 +190,11 @@ async function init() {
     const last = rows[rows.length - 1];
     $("meta").innerHTML = `数据截至 <b>${last.date}</b> | 共 <b>${rows.length}</b> 个交易日`;
 
+    const pG_oi = makePanel("cGoldOI", "#ff9800", "黄金·持仓 PCR", series(rows, "gold", "oi"));
+    const pS_oi = makePanel("cSilverOI", "#ff9800", "白银·持仓 PCR", series(rows, "silver", "oi"));
+    const pG_vol = makePanel("cGoldVol", "#26c6da", "黄金·成交 PCR", series(rows, "gold", "vol"));
+    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", series(rows, "silver", "vol"));
+
     const showBB = () => {
       const on = $("bbOn").checked, len = +$("bbLen").value, mult = +$("bbMult").value;
       [pG_oi, pS_oi, pG_vol, pS_vol].forEach(p => {
@@ -198,15 +204,10 @@ async function init() {
       });
     };
 
-    const pG_oi = makePanel("cGoldOI", "#ff9800", "黄金·持仓 PCR", series(rows, "gold", "oi"));
-    const pS_oi = makePanel("cSilverOI", "#ff9800", "白银·持仓 PCR", series(rows, "silver", "oi"));
-    const pG_vol = makePanel("cGoldVol", "#26c6da", "黄金·成交 PCR", series(rows, "gold", "vol"));
-    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", series(rows, "silver", "vol"));
-
-    if(last.gold.oi) $("nowGoldOI").innerHTML = `最新: <b>${last.gold.oi.toFixed(4)}</b> (${last.date})`;
-    if(last.silver.oi) $("nowSilverOI").innerHTML = `最新: <b>${last.silver.oi.toFixed(4)}</b> (${last.date})`;
-    if(last.gold.vol) $("nowGoldVol").innerHTML = `最新: <b>${last.gold.vol.toFixed(4)}</b> (${last.date})`;
-    if(last.silver.vol) $("nowSilverVol").innerHTML = `最新: <b>${last.silver.vol.toFixed(4)}</b> (${last.date})`;
+    if(last.gold && last.gold.oi) $("nowGoldOI").innerHTML = `最新: <b>${last.gold.oi.toFixed(4)}</b> (${last.date})`;
+    if(last.silver && last.silver.oi) $("nowSilverOI").innerHTML = `最新: <b>${last.silver.oi.toFixed(4)}</b> (${last.date})`;
+    if(last.gold && last.gold.vol) $("nowGoldVol").innerHTML = `最新: <b>${last.gold.vol.toFixed(4)}</b> (${last.date})`;
+    if(last.silver && last.silver.vol) $("nowSilverVol").innerHTML = `最新: <b>${last.silver.vol.toFixed(4)}</b> (${last.date})`;
 
     showBB();
     $("bbOn").onchange = showBB; $("bbLen").onchange = showBB; $("bbMult").onchange = showBB;
@@ -214,4 +215,3 @@ async function init() {
     // 联动时间轴
     const charts = [pG_oi, pS_oi, pG_vol, pS_vol].filter(Boolean).map(p => p.chart);
     charts.forEach((c, i) => {
-      c.timeScale().subscribeVisibleLogicalRangeChange(r => {
