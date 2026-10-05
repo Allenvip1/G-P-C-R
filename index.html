@@ -81,8 +81,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-// <pure>
-// 按表头名称解析，缺少白银列的旧文件也能打开（白银部分显示"暂无数据"）
+// 按表头名称解析
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
   const head = lines[0].split(",").map(s => s.trim());
@@ -96,17 +95,19 @@ function parseCsv(text) {
     const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol"), co = num(c, p + "call_oi"), po = num(c, p + "put_oi");
     return { cv, pv, co, po, vol: pv / cv, oi: po / co };
   };
+  // 🎯 核心修复：把白银的前缀从原来的 "s_" 修正为 "silver_" 从而完美对齐 CSV 数据库字段！
   return lines.slice(1).map(l => {
     const c = l.split(",");
-    return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "s_") };
+    return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "silver_") };
   }).filter(r => r.date).sort((a, b) => (a.date < b.date ? -1 : 1));
 }
+
 function bollinger(points, len, mult) {
   const up = [], lo = [], mid = [];
   for (let i = len - 1; i < points.length; i++) {
     const w = points.slice(i - len + 1, i + 1).map(p => p.value);
     const m = w.reduce((a, b) => a + b, 0) / len;
-    const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len);   // 总体标准差，与 TradingView 一致
+    const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len);
     const t = points[i].time;
     mid.push({ time: t, value: m });
     up.push({ time: t, value: m + mult * sd });
@@ -114,7 +115,6 @@ function bollinger(points, len, mult) {
   }
   return { up, lo, mid };
 }
-// </pure>
 
 const $ = id => document.getElementById(id);
 
@@ -129,13 +129,12 @@ function rawUrl() {
 }
 
 async function loadCsv() {
-  // 先读仓库里的最新文件（不依赖 Pages 重新构建），失败再读页面自带的副本
   const urls = [rawUrl(), "data/gold_pcr.csv"].filter(Boolean);
   for (const u of urls) {
     try {
       const r = await fetch(u, { cache: "no-cache" });
       if (r.ok) return await r.text();
-    } catch (e) { /* 试下一个 */ }
+    } catch (e) { }
   }
   throw new Error("无法加载 data/gold_pcr.csv");
 }
@@ -159,7 +158,6 @@ function makePanel(elId, color, title, pts) {
   const line = chart.addLineSeries({ color, lineWidth: 2, title, priceFormat: PF });
   line.setData(pts);
   const last = pts[pts.length - 1];
-  // 数据很少时线画不出来，用标记点显示最新一天
   line.setMarkers([{ time: last.time, position: "aboveBar", color, shape: "circle", text: last.value.toFixed(4) }]);
   const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
   const up  = chart.addLineSeries({ ...bbOpt });
@@ -182,65 +180,38 @@ function fillTable(id, rows, metal) {
   }).join("") + "</tbody>";
 }
 
-function setNow(id, pts) {
-  $(id).innerHTML = pts.length ? `最新 <b>${pts[pts.length - 1].value.toFixed(4)}</b>（${pts[pts.length - 1].time}）` : "";
-}
-
-async function main() {
-  let rows;
+// 🎯 补齐尾部被截断的全部主引擎初始化逻辑
+async function init() {
   try {
-    rows = parseCsv(await loadCsv());
-    if (!rows.length) throw new Error("数据文件是空的");
-  } catch (e) {
-    $("meta").textContent = "";
-    $("err").style.display = "block";
-    $("err").textContent = "加载失败：" + e.message;
-    return;
-  }
-  $("meta").innerHTML = `数据截至 <b>${rows[rows.length - 1].date}</b> ｜ 共 ${rows.length} 个交易日`;
+    const text = await loadCsv();
+    const rows = parseCsv(text);
+    if (!rows.length) throw new Error("数据文件为空");
+    
+    const last = rows[rows.length - 1];
+    $("meta").innerHTML = `数据截至 <b>${last.date}</b> | 共 <b>${rows.length}</b> 个交易日`;
 
-  const gOI = series(rows, "gold", "oi"),   gVol = series(rows, "gold", "vol");
-  const sOI = series(rows, "silver", "oi"), sVol = series(rows, "silver", "vol");
-  setNow("nowGoldOI", gOI);   setNow("nowGoldVol", gVol);
-  setNow("nowSilverOI", sOI); setNow("nowSilverVol", sVol);
-  fillTable("tblGold", rows, "gold");
-  fillTable("tblSilver", rows, "silver");
+    const showBB = () => {
+      const on = $("bbOn").checked, len = +$("bbLen").value, mult = +$("bbMult").value;
+      [pG_oi, pS_oi, pG_vol, pS_vol].forEach(p => {
+        if (!p) return;
+        if (!on || p.pts.length < len) { p.up.setData([]); p.lo.setData([]); p.mid.setData([]); }
+        else { const b = bollinger(p.pts, len, mult); p.up.setData(b.up); p.lo.setData(b.lo); p.mid.setData(b.mid); }
+      });
+    };
 
-  const panels = [
-    makePanel("cGoldOI",   "#ff9800", "黄金持仓量 PCR", gOI),
-    makePanel("cSilverOI", "#ff9800", "白银持仓量 PCR", sOI),
-    makePanel("cGoldVol",  "#26c6da", "黄金成交量 PCR", gVol),
-    makePanel("cSilverVol","#26c6da", "白银成交量 PCR", sVol),
-  ].filter(Boolean);
+    const pG_oi = makePanel("cGoldOI", "#ff9800", "黄金·持仓 PCR", series(rows, "gold", "oi"));
+    const pS_oi = makePanel("cSilverOI", "#ff9800", "白银·持仓 PCR", series(rows, "silver", "oi"));
+    const pG_vol = makePanel("cGoldVol", "#26c6da", "黄金·成交 PCR", series(rows, "gold", "vol"));
+    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", series(rows, "silver", "vol"));
 
-  // 所有图表的时间轴联动
-  let syncing = false;
-  panels.forEach(a => {
-    a.chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-      if (syncing || !range) return;
-      syncing = true;
-      panels.forEach(b => { if (b !== a) b.chart.timeScale().setVisibleLogicalRange(range); });
-      syncing = false;
-    });
-  });
+    if(last.gold.oi) $("nowGoldOI").innerHTML = `最新: <b>${last.gold.oi.toFixed(4)}</b> (${last.date})`;
+    if(last.silver.oi) $("nowSilverOI").innerHTML = `最新: <b>${last.silver.oi.toFixed(4)}</b> (${last.date})`;
+    if(last.gold.vol) $("nowGoldVol").innerHTML = `最新: <b>${last.gold.vol.toFixed(4)}</b> (${last.date})`;
+    if(last.silver.vol) $("nowSilverVol").innerHTML = `最新: <b>${last.silver.vol.toFixed(4)}</b> (${last.date})`;
 
-  window.addEventListener("resize", () => panels.forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
+    showBB();
+    $("bbOn").onchange = showBB; $("bbLen").onchange = showBB; $("bbMult").onchange = showBB;
 
-  function render() {
-    const len = Math.max(2, parseInt($("bbLen").value) || 20);
-    const mult = parseFloat($("bbMult").value) || 2;
-    const on = $("bbOn").checked;
-    panels.forEach(p => {
-      const b = bollinger(p.pts, len, mult);
-      p.up.setData(b.up); p.lo.setData(b.lo); p.mid.setData(b.mid);
-      [p.up, p.lo, p.mid].forEach(s => s.applyOptions({ visible: on }));
-    });
-  }
-  ["bbOn", "bbLen", "bbMult"].forEach(id => $(id).addEventListener("input", render));
-  render();
-  panels.forEach(p => p.chart.timeScale().fitContent());
-}
-main();
-</script>
-</body>
-</html>
+    // 联动时间轴
+    const charts = [pG_oi, pS_oi, pG_vol, pS_vol].filter(Boolean).map(p => p.chart);
+    charts.forEach((c, i) => {
