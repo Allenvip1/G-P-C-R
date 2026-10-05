@@ -52,7 +52,6 @@ def bulletin_date(text: str) -> dt.date:
 
 def parse_line(line: str):
     """同时匹配黄金(OG)和白银(SO)期权的看涨/看跌行"""
-    # 🎯 修改正则，允许品种代码为 OG 或 SO
     m = re.match(r"^(OG|SO) COMEX (GOLD|SILVER) OPTIONS ([CP])\s+(.+)$", line.strip())
     if not m:
         return None
@@ -89,11 +88,12 @@ def get_counts(text: str):
     # 校验黄金数据
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
-    # 校验白银数据（容错：如果周五晚上没交易导致白银缺失，赋予默认占位值防止崩脚本）
+    
+    # 🎯 修复此处：移除残存的未闭合括号，赋予正确的默认占位列表
     if "C" not in silver_res or "P" not in silver_res:
-        print("【警告】未抓取到 SO 白银期权行，采用容错占位")
-        silver_res["C"] = [1000, 10000]
-        silver_res["P"] = [500, 5000]
+        print("【警告】未抓取到 SO 白银期权行，采用零数据容错占位")
+        silver_res["C"] = [0, 0]
+        silver_res["P"] = [0, 0]
         
     cv, pv, co, po = gold_res["C"] + gold_res["P"]
     scv, spv, sco, spo = silver_res["C"] + silver_res["P"]
@@ -106,7 +106,6 @@ def read_rows(path: Path = CSV_PATH) -> dict:
     if path.exists():
         with path.open(newline="", encoding="utf-8") as f:
             for r in csv.DictReader(f):
-                # 如果历史老数据里没有白银列，自动用 0 补齐，防止网页报错
                 rows[r["date"]] = [
                     int(r.get("call_vol", 0)), int(r.get("put_vol", 0)), int(r.get("call_oi", 0)), int(r.get("put_oi", 0)),
                     int(r.get("silver_call_vol", 0)), int(r.get("silver_put_vol", 0)), int(r.get("silver_call_oi", 0)), int(r.get("silver_put_oi", 0))
