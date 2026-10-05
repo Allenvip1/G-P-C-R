@@ -13,7 +13,7 @@ URL = ("https://cmegroup.com"
        "Section02B_Summary_Volume_And_Open_Interest_Metals_Futures_And_Options.pdf")
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
-# 🎯 更新表头，加入白银的 6 个核心数据列
+# 更新表头，加入白银的 6 个核心数据列
 HEADER = [
     "date", 
     "call_vol", "put_vol", "call_oi", "put_oi", "vol_pcr", "oi_pcr",
@@ -89,9 +89,9 @@ def get_counts(text: str):
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
     
-    # 🎯 修复此处：移除残存的未闭合括号，赋予正确的默认占位列表
+    # 🎯 彻底修复：赋予合法的零列表数据，防止 Python 报错
     if "C" not in silver_res or "P" not in silver_res:
-        print("【警告】未抓取到 SO 白银期权行，采用零数据容错占位")
+        print("【提示】未抓取到 SO 白银期权数据，采用零数据容错占位")
         silver_res["C"] = [0, 0]
         silver_res["P"] = [0, 0]
         
