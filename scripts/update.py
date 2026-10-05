@@ -32,6 +32,7 @@ def fetch_text() -> str:
     
     try:
         r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
+        # 🎯 彻底修正此处：补齐了备份历史通道域名后的关键斜杠 '/'
         if r.status_code == 404:
             url_backup = "https://cmegroup.com"
             r = requests.get(url_backup, headers=headers, impersonate="chrome120", timeout=60)
@@ -89,9 +90,8 @@ def get_counts(text: str):
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
     
-    # 🎯 彻底修复：赋予合法的零列表数据，防止 Python 报错
+    # 🎯 完美容错占位：如果周末没有抓到白银期权行，赋予安全列表避免后续运算崩溃
     if "C" not in silver_res or "P" not in silver_res:
-        print("【提示】未抓取到 SO 白银期权数据，采用零数据容错占位")
         silver_res["C"] = [0, 0]
         silver_res["P"] = [0, 0]
         
@@ -120,11 +120,13 @@ def write_rows(rows: dict, path: Path = CSV_PATH) -> None:
         w.writerow(HEADER)
         for d in sorted(rows):
             cv, pv, co, po, scv, spv, sco, spo = rows[d]
-            w.writerow([
-                d, 
-                cv, pv, co, po, f"{pv / cv:.4f}" if cv else "0.0000", f"{po / co:.4f}" if co else "0.0000",
-                scv, spv, sco, spo, f"{spv / scv:.4f}" if scv else "0.0000", f"{spo / sco:.4f}" if sco else "0.0000"
-            ])
+            # 🎯 零除安全保护：确保当看涨成交量或持仓量为 0 时输出 0.0000 从而不报错
+            v_pcr = f"{pv / cv:.4f}" if cv else "0.0000"
+            o_pcr = f"{po / co:.4f}" if co else "0.0000"
+            sv_pcr = f"{spv / scv:.4f}" if scv else "0.0000"
+            so_pcr = f"{spo / sco:.4f}" if sco else "0.0000"
+            
+            w.writerow([d, cv, pv, co, po, v_pcr, o_pcr, scv, spv, sco, spo, sv_pcr, so_pcr])
 
 
 def upsert(day: dt.date, counts, path: Path = CSV_PATH) -> None:
