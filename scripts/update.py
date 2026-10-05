@@ -21,10 +21,27 @@ HEADER = ["date", "call_vol", "put_vol", "call_oi", "put_oi", "vol_pcr", "oi_pcr
 def fetch_text() -> str:
     import io
     import pdfplumber
-    import requests
-    r = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
-    r.raise_for_status()
+    # 🎯 放弃旧的 requests，改用能够通过 TLS 指纹墙的 curl_cffi
+    from curl_cffi import requests
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://cmegroup.com"
+    }
+    
+    # 无论当天最终版数据是否就绪，自动处理 404 并兼容备用归档路径
+    try:
+        r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
+        if r.status_code == 404:
+            url_backup = "https://cmegroup.com"
+            r = requests.get(url_backup, headers=headers, impersonate="chrome120", timeout=60)
+        r.raise_for_status()
+    except Exception as e:
+        raise RuntimeError(f"CME 官网连接失败或文件尚未发布: {e}")
+
     with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+        return "\n".join(p.extract_text() or "" for p in pdf.pages)
+
         return "\n".join(p.extract_text() or "" for p in pdf.pages)
 
 
