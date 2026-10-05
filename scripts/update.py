@@ -9,7 +9,7 @@ import sys
 import datetime as dt
 from pathlib import Path
 
-# 🎯 核心修复：第11行已替换为单行完整归档网址，彻底解决网址截断导致的连接报错
+# 🎯 第二步核心修复：网址已完美改回每日增量更新的 current 最新天动态路径
 URL = "https://cmegroup.com"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
