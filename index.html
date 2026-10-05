@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>COMEX 黄金期权 PCR</title>
+<title>COMEX 黄金 / 白银期权 PCR</title>
 <style>
   :root { --bg:#131722; --panel:#1e222d; --line:#2a2e39; --text:#d1d4dc; --dim:#868993; --oi:#ff9800; --vol:#26c6da; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-  .wrap { max-width:1100px; margin:0 auto; padding:16px; }
+  .wrap { max-width:1300px; margin:0 auto; padding:16px; }
   h1 { font-size:20px; margin:0 0 4px; }
-  h2 { font-size:16px; margin:20px 0 8px; display:flex; align-items:center; gap:8px; }
+  h2 { font-size:15px; margin:18px 0 8px; display:flex; align-items:center; gap:8px; }
   h2 small { color:var(--dim); font-size:13px; font-weight:400; }
   h2 small b { color:var(--text); }
   .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
@@ -19,7 +19,11 @@
   .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
   .controls label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
   .controls input[type=number] { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; width:64px; }
-  .chart { width:100%; height:300px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  .grid section { min-width:0; }
+  @media (max-width: 800px) { .grid { grid-template-columns:1fr; } }
+  .chart { width:100%; height:260px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .empty { height:100%; display:flex; align-items:center; justify-content:center; color:var(--dim); }
   .tablewrap { overflow-x:auto; }
   table { border-collapse:collapse; width:100%; min-width:640px; }
   th, td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
@@ -32,7 +36,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>COMEX 黄金期权 PCR（日线）</h1>
+  <h1>COMEX 黄金 / 白银期权 PCR（日线）</h1>
   <div id="meta">加载中…</div>
 
   <div class="controls">
@@ -41,27 +45,36 @@
     <label>倍数 <input type="number" id="bbMult" value="2" min="0.1" max="5" step="0.1"></label>
   </div>
 
-  <h2><span class="dot" style="background:var(--oi)"></span>持仓量 PCR <small id="oiNow"></small></h2>
-  <div id="chartOI" class="chart"></div>
-
-  <h2><span class="dot" style="background:var(--vol)"></span>成交量 PCR（日 PCR） <small id="volNow"></small></h2>
-  <div id="chartVol" class="chart"></div>
-
+  <div class="grid">
+    <section>
+      <h2><span class="dot" style="background:var(--oi)"></span>黄金 · 持仓量 PCR <small id="nowGoldOI"></small></h2>
+      <div id="cGoldOI" class="chart"></div>
+    </section>
+    <section>
+      <h2><span class="dot" style="background:var(--oi)"></span>白银 · 持仓量 PCR <small id="nowSilverOI"></small></h2>
+      <div id="cSilverOI" class="chart"></div>
+    </section>
+    <section>
+      <h2><span class="dot" style="background:var(--vol)"></span>黄金 · 成交量 PCR（日） <small id="nowGoldVol"></small></h2>
+      <div id="cGoldVol" class="chart"></div>
+    </section>
+    <section>
+      <h2><span class="dot" style="background:var(--vol)"></span>白银 · 成交量 PCR（日） <small id="nowSilverVol"></small></h2>
+      <div id="cSilverVol" class="chart"></div>
+    </section>
+  </div>
   <div id="err" class="err" style="display:none"></div>
 
-  <h2>最近数据（最新在前）</h2>
-  <div class="tablewrap">
-    <table id="tbl">
-      <thead><tr><th>日期</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <h2>黄金 · 最近数据（最新在前）</h2>
+  <div class="tablewrap"><table id="tblGold"></table></div>
+  <h2>白银 · 最近数据（最新在前）</h2>
+  <div class="tablewrap"><table id="tblSilver"></table></div>
 
   <p class="note">
-    数据来源：CME Group Daily Bulletin（PG02B），COMEX 黄金期权（OG）全部到期月合计，不含周度期权。
-    成交量 PCR = 看跌成交量 ÷ 看涨成交量；持仓量 PCR = 看跌持仓量 ÷ 看涨持仓量。
+    数据来源：CME Group Daily Bulletin（PG02B）。黄金为 COMEX 黄金期权（OG），白银为 COMEX 白银期权（SO），均为全部到期月合计，不含周度期权。
+    成交量 PCR = 看跌成交量 ÷ 看涨成交量；持仓量 PCR = 看跌持仓量 ÷ 看涨持仓量。白银期权成交量较小，成交量 PCR 波动会比较大。
     每个交易日收盘后更新一次，仅供参考，不构成投资建议。
-    布林带需要至少「周期」个交易日的数据才会显示。两张图的时间轴是联动的。
+    布林带需要至少「周期」个交易日的数据才会显示。四张图的时间轴是联动的。
     图表由 <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ 提供。
   </p>
 </div>
@@ -69,13 +82,24 @@
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 // <pure>
+// 按表头名称解析，缺少白银列的旧文件也能打开（白银部分显示"暂无数据"）
 function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/).slice(1).filter(Boolean);
-  return lines.map(l => {
-    const [date, cv, pv, co, po] = l.split(",");
-    return { date, cv: +cv, pv: +pv, co: +co, po: +po, vol: +pv / +cv, oi: +po / +co };
-  }).filter(r => r.date && isFinite(r.vol) && isFinite(r.oi))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  const head = lines[0].split(",").map(s => s.trim());
+  const col = n => head.indexOf(n);
+  const num = (c, n) => {
+    const i = col(n);
+    if (i < 0 || c[i] === undefined || c[i].trim() === "") return NaN;
+    return +c[i];
+  };
+  const mk = (c, p) => {
+    const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol"), co = num(c, p + "call_oi"), po = num(c, p + "put_oi");
+    return { cv, pv, co, po, vol: pv / cv, oi: po / co };
+  };
+  return lines.slice(1).map(l => {
+    const c = l.split(",");
+    return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "s_") };
+  }).filter(r => r.date).sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 function bollinger(points, len, mult) {
   const up = [], lo = [], mid = [];
@@ -116,14 +140,17 @@ async function loadCsv() {
   throw new Error("无法加载 data/gold_pcr.csv");
 }
 
-function fmt(n) { return n.toLocaleString("en-US"); }
-
+const fmt = n => n.toLocaleString("en-US");
 const PF = { type: "price", precision: 4, minMove: 0.0001 };
 
 function makePanel(elId, color, title, pts) {
   const el = $(elId);
+  if (!pts.length) {
+    el.innerHTML = '<div class="empty">暂无数据</div>';
+    return null;
+  }
   const chart = LightweightCharts.createChart(el, {
-    width: el.clientWidth, height: 300,
+    width: el.clientWidth, height: 260,
     layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
     grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
     rightPriceScale: { borderColor: "#2a2e39" },
@@ -141,6 +168,24 @@ function makePanel(elId, color, title, pts) {
   return { el, chart, pts, up, lo, mid };
 }
 
+function series(rows, metal, key) {
+  return rows.filter(r => isFinite(r[metal][key])).map(r => ({ time: r.date, value: r[metal][key] }));
+}
+
+function fillTable(id, rows, metal) {
+  const rs = rows.filter(r => isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
+  const head = "<thead><tr><th>日期</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
+  if (!rs.length) { $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>'; return; }
+  $(id).innerHTML = head + "<tbody>" + rs.map(r => {
+    const m = r[metal];
+    return `<tr><td>${r.date}</td><td>${fmt(m.cv)}</td><td>${fmt(m.pv)}</td><td>${m.vol.toFixed(4)}</td><td>${fmt(m.co)}</td><td>${fmt(m.po)}</td><td>${m.oi.toFixed(4)}</td></tr>`;
+  }).join("") + "</tbody>";
+}
+
+function setNow(id, pts) {
+  $(id).innerHTML = pts.length ? `最新 <b>${pts[pts.length - 1].value.toFixed(4)}</b>（${pts[pts.length - 1].time}）` : "";
+}
+
 async function main() {
   let rows;
   try {
@@ -152,35 +197,32 @@ async function main() {
     $("err").textContent = "加载失败：" + e.message;
     return;
   }
+  $("meta").innerHTML = `数据截至 <b>${rows[rows.length - 1].date}</b> ｜ 共 ${rows.length} 个交易日`;
 
-  const last = rows[rows.length - 1];
-  $("meta").innerHTML = `数据截至 <b>${last.date}</b> ｜ 共 ${rows.length} 个交易日`;
-  $("oiNow").innerHTML  = `最新 <b>${last.oi.toFixed(4)}</b>`;
-  $("volNow").innerHTML = `最新 <b>${last.vol.toFixed(4)}</b>`;
+  const gOI = series(rows, "gold", "oi"),   gVol = series(rows, "gold", "vol");
+  const sOI = series(rows, "silver", "oi"), sVol = series(rows, "silver", "vol");
+  setNow("nowGoldOI", gOI);   setNow("nowGoldVol", gVol);
+  setNow("nowSilverOI", sOI); setNow("nowSilverVol", sVol);
+  fillTable("tblGold", rows, "gold");
+  fillTable("tblSilver", rows, "silver");
 
-  const tbody = $("tbl").querySelector("tbody");
-  rows.slice(-30).reverse().forEach(r => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.date}</td><td>${fmt(r.cv)}</td><td>${fmt(r.pv)}</td><td>${r.vol.toFixed(4)}</td><td>${fmt(r.co)}</td><td>${fmt(r.po)}</td><td>${r.oi.toFixed(4)}</td>`;
-    tbody.appendChild(tr);
-  });
+  const panels = [
+    makePanel("cGoldOI",   "#ff9800", "黄金持仓量 PCR", gOI),
+    makePanel("cSilverOI", "#ff9800", "白银持仓量 PCR", sOI),
+    makePanel("cGoldVol",  "#26c6da", "黄金成交量 PCR", gVol),
+    makePanel("cSilverVol","#26c6da", "白银成交量 PCR", sVol),
+  ].filter(Boolean);
 
-  const pOI  = makePanel("chartOI",  "#ff9800", "持仓量 PCR",  rows.map(r => ({ time: r.date, value: r.oi })));
-  const pVol = makePanel("chartVol", "#26c6da", "成交量 PCR",  rows.map(r => ({ time: r.date, value: r.vol })));
-  const panels = [pOI, pVol];
-
-  // 两张图时间轴联动
+  // 所有图表的时间轴联动
   let syncing = false;
-  function link(a, b) {
+  panels.forEach(a => {
     a.chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
       if (syncing || !range) return;
       syncing = true;
-      b.chart.timeScale().setVisibleLogicalRange(range);
+      panels.forEach(b => { if (b !== a) b.chart.timeScale().setVisibleLogicalRange(range); });
       syncing = false;
     });
-  }
-  link(pOI, pVol);
-  link(pVol, pOI);
+  });
 
   window.addEventListener("resize", () => panels.forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
 
