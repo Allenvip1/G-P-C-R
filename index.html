@@ -79,12 +79,11 @@
   </p>
 </div>
 
-<script src="https://jsdelivr.net"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-// 按表头名称解析
+// 按表头名称解析 CSV
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  // 🎯 终极修复：完美补齐 [0]，恢复读取第一行表头字段功能！
   const head = lines[0].split(",").map(s => s.trim());
   const col = n => head.indexOf(n);
   const num = (c, n) => {
@@ -93,7 +92,8 @@ function parseCsv(text) {
     return +c[i];
   };
   const mk = (c, p) => {
-    const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol"), co = num(c, p + "call_oi"), po = num(c, p + "put_oi");
+    const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol");
+    const co = num(c, p + "call_oi"),  po = num(c, p + "put_oi");
     return { cv, pv, co, po, vol: pv / cv, oi: po / co };
   };
   return lines.slice(1).map(l => {
@@ -123,13 +123,14 @@ function rawUrl() {
   if (host.endsWith(".github.io")) {
     const user = host.split(".")[0];
     const repo = location.pathname.split("/")[1];
-    if (repo) return `https://githubusercontent.com{user}/${repo}/main/data/gold_pcr.csv`;
+    if (repo) return `https://raw.githubusercontent.com/${user}/${repo}/main/data/gold_pcr.csv`;
   }
   return null;
 }
 
 async function loadCsv() {
-  const urls = [rawUrl(), "data/gold_pcr.csv"].filter(Boolean);
+  // 先读相对路径（同源，最稳），失败再尝试 raw.githubusercontent.com
+  const urls = ["data/gold_pcr.csv", rawUrl()].filter(Boolean);
   for (const u of urls) {
     try {
       const r = await fetch(u, { cache: "no-cache" });
@@ -166,19 +167,30 @@ function makePanel(elId, color, title, pts) {
   return { el, chart, pts, up, lo, mid };
 }
 
-// 🎯 稳妥兼容机制
 function series(rows, metal, key) {
-  return rows.filter(r => r[metal] && isFinite(r[metal][key])).map(r => ({ time: r.date, value: r[metal][key] }));
+  return rows
+    .filter(r => r[metal] && isFinite(r[metal][key]) && r[metal][key] > 0)
+    .map(r => ({ time: r.date, value: r[metal][key] }));
 }
 
 function fillTable(id, rows, metal) {
   const rs = rows.filter(r => r[metal] && isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
   const head = "<thead><tr><th>日期</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
-  if (!rs.length) { $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>'; return; }
+  if (!rs.length) {
+    $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>';
+    return;
+  }
   $(id).innerHTML = head + "<tbody>" + rs.map(r => {
     const m = r[metal];
     return `<tr><td>${r.date}</td><td>${fmt(m.cv)}</td><td>${fmt(m.pv)}</td><td>${m.vol.toFixed(4)}</td><td>${fmt(m.co)}</td><td>${fmt(m.po)}</td><td>${m.oi.toFixed(4)}</td></tr>`;
   }).join("") + "</tbody>";
+}
+
+// 每个面板显示它自己最后一个有效数据点
+function setNow(id, pts) {
+  if (!pts.length) return;
+  const p = pts[pts.length - 1];
+  $(id).innerHTML = `最新: <b>${p.value.toFixed(4)}</b> (${p.time})`;
 }
 
 async function init() {
@@ -186,32 +198,66 @@ async function init() {
     const text = await loadCsv();
     const rows = parseCsv(text);
     if (!rows.length) throw new Error("数据文件为空");
-    
+
     const last = rows[rows.length - 1];
     $("meta").innerHTML = `数据截至 <b>${last.date}</b> | 共 <b>${rows.length}</b> 个交易日`;
 
-    const pG_oi = makePanel("cGoldOI", "#ff9800", "黄金·持仓 PCR", series(rows, "gold", "oi"));
-    const pS_oi = makePanel("cSilverOI", "#ff9800", "白银·持仓 PCR", series(rows, "silver", "oi"));
-    const pG_vol = makePanel("cGoldVol", "#26c6da", "黄金·成交 PCR", series(rows, "gold", "vol"));
-    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", series(rows, "silver", "vol"));
+    const sGoldOI = series(rows, "gold", "oi");
+    const sSilverOI = series(rows, "silver", "oi");
+    const sGoldVol = series(rows, "gold", "vol");
+    const sSilverVol = series(rows, "silver", "vol");
+
+    const pG_oi  = makePanel("cGoldOI",    "#ff9800", "黄金·持仓 PCR", sGoldOI);
+    const pS_oi  = makePanel("cSilverOI",  "#ff9800", "白银·持仓 PCR", sSilverOI);
+    const pG_vol = makePanel("cGoldVol",   "#26c6da", "黄金·成交 PCR", sGoldVol);
+    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", sSilverVol);
+    const panels = [pG_oi, pS_oi, pG_vol, pS_vol];
 
     const showBB = () => {
-      const on = $("bbOn").checked, len = +$("bbLen").value, mult = +$("bbMult").value;
-      [pG_oi, pS_oi, pG_vol, pS_vol].forEach(p => {
+      const on = $("bbOn").checked, len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
+      panels.forEach(p => {
         if (!p) return;
         if (!on || p.pts.length < len) { p.up.setData([]); p.lo.setData([]); p.mid.setData([]); }
         else { const b = bollinger(p.pts, len, mult); p.up.setData(b.up); p.lo.setData(b.lo); p.mid.setData(b.mid); }
       });
     };
 
-    if(last.gold && last.gold.oi) $("nowGoldOI").innerHTML = `最新: <b>${last.gold.oi.toFixed(4)}</b> (${last.date})`;
-    if(last.silver && last.silver.oi) $("nowSilverOI").innerHTML = `最新: <b>${last.silver.oi.toFixed(4)}</b> (${last.date})`;
-    if(last.gold && last.gold.vol) $("nowGoldVol").innerHTML = `最新: <b>${last.gold.vol.toFixed(4)}</b> (${last.date})`;
-    if(last.silver && last.silver.vol) $("nowSilverVol").innerHTML = `最新: <b>${last.silver.vol.toFixed(4)}</b> (${last.date})`;
+    setNow("nowGoldOI", sGoldOI);
+    setNow("nowSilverOI", sSilverOI);
+    setNow("nowGoldVol", sGoldVol);
+    setNow("nowSilverVol", sSilverVol);
 
     showBB();
-    $("bbOn").onchange = showBB; $("bbLen").onchange = showBB; $("bbMult").onchange = showBB;
+    $("bbOn").onchange = showBB;
+    $("bbLen").onchange = showBB;
+    $("bbMult").onchange = showBB;
 
     // 联动时间轴
-    const charts = [pG_oi, pS_oi, pG_vol, pS_vol].filter(Boolean).map(p => p.chart);
+    const charts = panels.filter(Boolean).map(p => p.chart);
+    let syncing = false;
     charts.forEach((c, i) => {
+      c.timeScale().subscribeVisibleLogicalRangeChange(r => {
+        if (syncing || !r) return;
+        syncing = true;
+        charts.forEach((o, j) => { if (j !== i) o.timeScale().setVisibleLogicalRange(r); });
+        syncing = false;
+      });
+    });
+    charts.forEach(c => c.timeScale().fitContent());
+
+    addEventListener("resize", () =>
+      panels.forEach(p => p && p.chart.applyOptions({ width: p.el.clientWidth })));
+
+    fillTable("tblGold", rows, "gold");
+    fillTable("tblSilver", rows, "silver");
+  } catch (e) {
+    $("meta").textContent = "";
+    const el = $("err");
+    el.style.display = "block";
+    el.textContent = "加载失败：" + e.message;
+  }
+}
+init();
+</script>
+</body>
+</html>
