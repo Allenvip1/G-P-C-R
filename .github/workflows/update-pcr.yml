@@ -2,7 +2,8 @@ name: update-pcr
 
 on:
   schedule:
-    - cron: "30 16 * * 1-5"
+    # CME 日报在美国中部时间午夜后发布（约 UTC 06:00），这里取 UTC 07:30，周二至周六
+    - cron: "30 7 * * 2-6"
   workflow_dispatch:
 
 jobs:
