@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 每日抓取 CME Daily Bulletin 的 PG02B，读取 COMEX 黄金期权（OG）和白银期权（SO）
-的看涨/看跌成交量和持仓量。若当天最终版 PDF 尚未发布，自动安全跳过，复用并保留历史数据。
+的看涨/看跌成交量和持仓量。若当天最终版 PDF 尚未发布或内容非正规 PDF，自动安全跳过，复用并保留历史数据。
 """
 import csv
 import re
@@ -9,7 +9,6 @@ import sys
 import datetime as dt
 from pathlib import Path
 
-# 🎯 核心修复：网址改成单行绝对字符串，没有任何换行拼接，绝不可能再产生解析粘连错误！
 URL = "https://cmegroup.com"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
@@ -33,16 +32,22 @@ def fetch_text() -> str:
     try:
         r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
         
-        # 如果遇到 404 代表官方今天还没出最终数据，优雅安全退出，保留复用历史
+        # 1. 容错拦截：如果直接返回 404，安全退出复用历史
         if r.status_code == 404:
-            print("【提示】CME 官网当天最终版 PDF 尚未发布。程序将自动安全退出，完整复用上一日的历史数据。")
+            print("【提示】CME 官网当天最终版 PDF 尚未发布（状态码 404）。程序将自动安全退出，完整复用上一日的历史数据。")
             sys.exit(0)
             
         r.raise_for_status()
+        
+        # 2. 🎯 终极容错：检查文件头是否为标准的 %PDF。若官方返回的是提示网页，则安全退出复用历史
+        if not r.content.startswith(b"%PDF"):
+            print("【提示】CME 官网当天的真正 PDF 数据文件尚未完全上架（当前返回了占位网页）。程序自动安全退出，完整复用原有历史数据。")
+            sys.exit(0)
+            
     except Exception as e:
         if isinstance(e, SystemExit):
             raise e
-        raise RuntimeError(f"CME 官网连接异常: {e}")
+        raise RuntimeError(f"CME 官网连接或文件校验异常: {e}")
 
     with pdfplumber.open(io.BytesIO(r.content)) as pdf:
         return "\n".join(p.extract_text() or "" for p in pdf.pages)
@@ -94,7 +99,7 @@ def get_counts(text: str):
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
     
-    # 🎯 核心修复：白银空值容错必须规范写成 [0, 0]，彻底消灭语法雷区与除零崩溃
+    # 白银空值容错列表
     if "C" not in silver_res or "P" not in silver_res:
         silver_res["C"] = [0, 0]
         silver_res["P"] = [0, 0]
