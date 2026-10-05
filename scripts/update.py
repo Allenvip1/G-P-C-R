@@ -9,8 +9,8 @@ import sys
 import datetime as dt
 from pathlib import Path
 
-URL = ("https://cmegroup.com"
-       "Section02B_Summary_Volume_And_Open_Interest_Metals_Futures_And_Options.pdf")
+# 🎯 核心修复：网址改成单行绝对字符串，没有任何换行拼接，绝不可能再产生解析粘连错误！
+URL = "https://cmegroup.com"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
 # 更新表头，加入白银的 6 个核心数据列
@@ -33,14 +33,13 @@ def fetch_text() -> str:
     try:
         r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
         
-        # 🎯 核心逻辑改写：如果遇到 404 代表官方今天还没出最终数据
+        # 如果遇到 404 代表官方今天还没出最终数据，优雅安全退出，保留复用历史
         if r.status_code == 404:
-            print("【提示】CME 官网当天最终版 PDF 尚未发布（时区未到）。程序将自动安全退出，完整复用上一日的历史数据。")
-            sys.exit(0) # 优雅地以成功状态码 0 退出，不让 GitHub Actions 报错变红
+            print("【提示】CME 官网当天最终版 PDF 尚未发布。程序将自动安全退出，完整复用上一日的历史数据。")
+            sys.exit(0)
             
         r.raise_for_status()
     except Exception as e:
-        # 如果是 sys.exit(0) 触发的退出，让它正常放行
         if isinstance(e, SystemExit):
             raise e
         raise RuntimeError(f"CME 官网连接异常: {e}")
@@ -95,7 +94,7 @@ def get_counts(text: str):
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
     
-    # 完美容错占位：如果当天数据中白银期权未产生，赋予安全零列表
+    # 🎯 核心修复：白银空值容错必须规范写成 [0, 0]，彻底消灭语法雷区与除零崩溃
     if "C" not in silver_res or "P" not in silver_res:
         silver_res["C"] = [0, 0]
         silver_res["P"] = [0, 0]
@@ -146,7 +145,7 @@ def main() -> None:
     
     counts = get_counts(text)
     upsert(day, counts)
-    print(f"【成功】{day} ({tag}) 黄金与白银双通道数据已成功更新！")
+    print(f"【成功】{day} ({tag}) 黄金与白银双通道数据已成功同步！")
 
 
 if __name__ == "__main__":
