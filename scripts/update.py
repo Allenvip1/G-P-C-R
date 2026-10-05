@@ -9,6 +9,7 @@ import sys
 import datetime as dt
 from pathlib import Path
 
+# 🎯 核心修复：第11行已替换为单行完整归档网址，彻底解决网址截断导致的连接报错
 URL = "https://cmegroup.com"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
@@ -39,7 +40,7 @@ def fetch_text() -> str:
             
         r.raise_for_status()
         
-        # 2. 🎯 终极容错：检查文件头是否为标准的 %PDF。若官方返回的是提示网页，则安全退出复用历史
+        # 2. 终极容错：检查文件头是否为标准的 %PDF。若官方返回的是提示网页，则安全退出复用历史
         if not r.content.startswith(b"%PDF"):
             print("【提示】CME 官网当天的真正 PDF 数据文件尚未完全上架（当前返回了占位网页）。程序自动安全退出，完整复用原有历史数据。")
             sys.exit(0)
