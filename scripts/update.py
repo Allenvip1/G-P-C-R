@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 每日抓取 CME Daily Bulletin 的 PG02B，读取 COMEX 黄金期权（OG）和白银期权（SO）
-的看涨/看跌成交量和持仓量（全部到期月合计），写入 data/gold_pcr.csv（同一天重复运行会覆盖）。
+的看涨/看跌成交量和持仓量。若当天最终版 PDF 尚未发布，自动安全跳过，复用并保留历史数据。
 """
 import csv
 import re
@@ -32,13 +32,18 @@ def fetch_text() -> str:
     
     try:
         r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
-        # 🎯 彻底修正此处：补齐了备份历史通道域名后的关键斜杠 '/'
+        
+        # 🎯 核心逻辑改写：如果遇到 404 代表官方今天还没出最终数据
         if r.status_code == 404:
-            url_backup = "https://cmegroup.com"
-            r = requests.get(url_backup, headers=headers, impersonate="chrome120", timeout=60)
+            print("【提示】CME 官网当天最终版 PDF 尚未发布（时区未到）。程序将自动安全退出，完整复用上一日的历史数据。")
+            sys.exit(0) # 优雅地以成功状态码 0 退出，不让 GitHub Actions 报错变红
+            
         r.raise_for_status()
     except Exception as e:
-        raise RuntimeError(f"CME 官网连接失败或文件尚未发布: {e}")
+        # 如果是 sys.exit(0) 触发的退出，让它正常放行
+        if isinstance(e, SystemExit):
+            raise e
+        raise RuntimeError(f"CME 官网连接异常: {e}")
 
     with pdfplumber.open(io.BytesIO(r.content)) as pdf:
         return "\n".join(p.extract_text() or "" for p in pdf.pages)
@@ -90,7 +95,7 @@ def get_counts(text: str):
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
     
-    # 🎯 完美容错占位：如果周末没有抓到白银期权行，赋予安全列表避免后续运算崩溃
+    # 完美容错占位：如果当天数据中白银期权未产生，赋予安全零列表
     if "C" not in silver_res or "P" not in silver_res:
         silver_res["C"] = [0, 0]
         silver_res["P"] = [0, 0]
@@ -120,7 +125,6 @@ def write_rows(rows: dict, path: Path = CSV_PATH) -> None:
         w.writerow(HEADER)
         for d in sorted(rows):
             cv, pv, co, po, scv, spv, sco, spo = rows[d]
-            # 🎯 零除安全保护：确保当看涨成交量或持仓量为 0 时输出 0.0000 从而不报错
             v_pcr = f"{pv / cv:.4f}" if cv else "0.0000"
             o_pcr = f"{po / co:.4f}" if co else "0.0000"
             sv_pcr = f"{spv / scv:.4f}" if scv else "0.0000"
@@ -142,7 +146,7 @@ def main() -> None:
     
     counts = get_counts(text)
     upsert(day, counts)
-    print(f"【成功】{day} ({tag}) 黄金与白银双通道数据已成功更新并写入 CSV 库！")
+    print(f"【成功】{day} ({tag}) 黄金与白银双通道数据已成功更新！")
 
 
 if __name__ == "__main__":
