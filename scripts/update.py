@@ -1,53 +1,56 @@
 #!/usr/bin/env python3
 """
-每日抓取 CME Daily Bulletin 的 PG02B，读取 COMEX 黄金期权（OG）和白银期权（SO）
-的看涨/看跌成交量和持仓量。若当天最终版 PDF 尚未发布或内容非正规 PDF，自动安全跳过，复用并保留历史数据。
+每日抓取 CME Daily Bulletin 的 PG02B（金属期货与期权汇总），读取 COMEX 黄金期权（OG）
+和白银期权（SO）的看涨/看跌成交量和持仓量，写入 data/gold_pcr.csv。
+若当天 PDF 尚未发布或返回的不是正规 PDF，自动安全退出，保留历史数据。
 """
 import csv
+import io
 import re
 import sys
 import datetime as dt
 from pathlib import Path
 
-# 🎯 第二步核心修复：网址已完美改回每日增量更新的 current 最新天动态路径
-URL = "https://cmegroup.com"
+URL = (
+    "https://www.cmegroup.com/daily_bulletin/current/"
+    "Section02B_Summary_Volume_And_Open_Interest_Metals_Futures_And_Options.pdf"
+)
+REFERER = "https://www.cmegroup.com/"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
 
-# 更新表头，加入白银的 6 个核心数据列
 HEADER = [
-    "date", 
+    "date",
     "call_vol", "put_vol", "call_oi", "put_oi", "vol_pcr", "oi_pcr",
-    "silver_call_vol", "silver_put_vol", "silver_call_oi", "silver_put_oi", "silver_vol_pcr", "silver_oi_pcr"
+    "silver_call_vol", "silver_put_vol", "silver_call_oi", "silver_put_oi",
+    "silver_vol_pcr", "silver_oi_pcr",
 ]
 
+
 def fetch_text() -> str:
-    import io
     import pdfplumber
     from curl_cffi import requests
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://cmegroup.com"
+        "Referer": REFERER,
     }
-    
+
     try:
         r = requests.get(URL, headers=headers, impersonate="chrome120", timeout=60)
-        
-        # 1. 容错拦截：如果直接返回 404，安全退出复用历史
+
         if r.status_code == 404:
-            print("【提示】CME 官网当天最终版 PDF 尚未发布（状态码 404）。程序将自动安全退出，完整复用上一日的历史数据。")
+            print("【提示】CME 当天的 PDF 尚未发布（404）。安全退出，保留历史数据。")
             sys.exit(0)
-            
+
         r.raise_for_status()
-        
-        # 2. 终极容错：检查文件头是否为标准的 %PDF。若官方返回的是提示网页，则安全退出复用历史
+
         if not r.content.startswith(b"%PDF"):
-            print("【提示】CME 官网当天的真正 PDF 数据文件尚未完全上架（当前返回了占位网页）。程序自动安全退出，完整复用原有历史数据。")
+            print("【提示】CME 返回的不是 PDF（可能是占位网页或拦截页）。安全退出，保留历史数据。")
             sys.exit(0)
-            
+
+    except SystemExit:
+        raise
     except Exception as e:
-        if isinstance(e, SystemExit):
-            raise e
         raise RuntimeError(f"CME 官网连接或文件校验异常: {e}")
 
     with pdfplumber.open(io.BytesIO(r.content)) as pdf:
@@ -62,31 +65,33 @@ def bulletin_date(text: str) -> dt.date:
 
 
 def parse_line(line: str):
-    """同时匹配黄金(OG)和白银(SO)期权的看涨/看跌行"""
+    """同时匹配黄金(OG)和白银(SO)期权的看涨/看跌汇总行。"""
     m = re.match(r"^(OG|SO) COMEX (GOLD|SILVER) OPTIONS ([CP])\s+(.+)$", line.strip())
     if not m:
         return None
-    
-    product_code = m.group(1) # OG 或 SO
-    side = m.group(3)         # C 或 P
-    
+
+    product_code = m.group(1)  # OG 或 SO
+    side = m.group(3)          # C 或 P
+
     rest = re.sub(r"([+-])(?=\d)", r" \1 ", m.group(4)).split()
     s = next((i for i, t in enumerate(rest) if t in ("+", "-")), None)
     if s is None or s < 2:
         return None
-    
-    oi, vol = int(rest[s - 1]), int(rest[s - 2])
-    parts = [int(x) for x in rest[: s - 2]]
+
+    try:
+        oi, vol = int(rest[s - 1]), int(rest[s - 2])
+        parts = [int(x) for x in rest[: s - 2]]
+    except ValueError:
+        return None
     if parts and sum(parts) != vol:
         return None
-        
+
     return product_code, side, vol, oi
 
 
 def get_counts(text: str):
-    gold_res = {}
-    silver_res = {}
-    
+    gold_res, silver_res = {}, {}
+
     for ln in text.splitlines():
         r = parse_line(ln)
         if r:
@@ -95,20 +100,40 @@ def get_counts(text: str):
                 gold_res[side] = [vol, oi]
             elif prod == "SO":
                 silver_res[side] = [vol, oi]
-                
-    # 校验黄金数据
+
     if "C" not in gold_res or "P" not in gold_res:
         raise ValueError("没找到 OG 黄金看涨/看跌行")
-    
-    # 白银空值容错列表
-    if "C" not in silver_res or "P" not in silver_res:
-        silver_res["C"] = [0, 0]
-        silver_res["P"] = [0, 0]
-        
-    cv, pv, co, po = gold_res["C"] + gold_res["P"]
-    scv, spv, sco, spo = silver_res["C"] + silver_res["P"]
-    
-    return cv, pv, co, po, scv, spv, sco, spo
+
+    cv, co = gold_res["C"]
+    pv, po = gold_res["P"]
+
+    if "C" in silver_res and "P" in silver_res:
+        scv, sco = silver_res["C"]
+        spv, spo = silver_res["P"]
+    else:
+        # 白银没读到就留空（None），不要写 0，否则图上会掉到 0
+        print("【警告】没找到 SO 白银看涨/看跌行，白银列将留空。")
+        scv = spv = sco = spo = None
+
+    return [cv, pv, co, po, scv, spv, sco, spo]
+
+
+def _int_or_none(v):
+    if v is None:
+        return None
+    v = str(v).strip()
+    if v == "":
+        return None
+    try:
+        return int(float(v))
+    except ValueError:
+        return None
+
+
+def _ratio(num, den):
+    if num is None or not den:
+        return ""
+    return f"{num / den:.4f}"
 
 
 def read_rows(path: Path = CSV_PATH) -> dict:
@@ -116,9 +141,14 @@ def read_rows(path: Path = CSV_PATH) -> dict:
     if path.exists():
         with path.open(newline="", encoding="utf-8") as f:
             for r in csv.DictReader(f):
-                rows[r["date"]] = [
-                    int(r.get("call_vol", 0)), int(r.get("put_vol", 0)), int(r.get("call_oi", 0)), int(r.get("put_oi", 0)),
-                    int(r.get("silver_call_vol", 0)), int(r.get("silver_put_vol", 0)), int(r.get("silver_call_oi", 0)), int(r.get("silver_put_oi", 0))
+                d = (r.get("date") or "").strip()
+                if not d:
+                    continue
+                rows[d] = [
+                    _int_or_none(r.get("call_vol")), _int_or_none(r.get("put_vol")),
+                    _int_or_none(r.get("call_oi")), _int_or_none(r.get("put_oi")),
+                    _int_or_none(r.get("silver_call_vol")), _int_or_none(r.get("silver_put_vol")),
+                    _int_or_none(r.get("silver_call_oi")), _int_or_none(r.get("silver_put_oi")),
                 ]
     return rows
 
@@ -130,12 +160,15 @@ def write_rows(rows: dict, path: Path = CSV_PATH) -> None:
         w.writerow(HEADER)
         for d in sorted(rows):
             cv, pv, co, po, scv, spv, sco, spo = rows[d]
-            v_pcr = f"{pv / cv:.4f}" if cv else "0.0000"
-            o_pcr = f"{po / co:.4f}" if co else "0.0000"
-            sv_pcr = f"{spv / scv:.4f}" if scv else "0.0000"
-            so_pcr = f"{spo / sco:.4f}" if sco else "0.0000"
-            
-            w.writerow([d, cv, pv, co, po, v_pcr, o_pcr, scv, spv, sco, spo, sv_pcr, so_pcr])
+            w.writerow([
+                d,
+                "" if cv is None else cv, "" if pv is None else pv,
+                "" if co is None else co, "" if po is None else po,
+                _ratio(pv, cv), _ratio(po, co),
+                "" if scv is None else scv, "" if spv is None else spv,
+                "" if sco is None else sco, "" if spo is None else spo,
+                _ratio(spv, scv), _ratio(spo, sco),
+            ])
 
 
 def upsert(day: dt.date, counts, path: Path = CSV_PATH) -> None:
@@ -148,10 +181,10 @@ def main() -> None:
     text = fetch_text()
     day = bulletin_date(text)
     tag = "含 PRELIMINARY 标注" if "PRELIMINARY" in text else "无初步版标注"
-    
+
     counts = get_counts(text)
     upsert(day, counts)
-    print(f"【成功】{day} ({tag}) 黄金与白银双通道数据已成功同步！")
+    print(f"【成功】{day}（{tag}）黄金与白银数据已同步：{counts}")
 
 
 if __name__ == "__main__":
