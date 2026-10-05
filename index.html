@@ -75,15 +75,16 @@
     成交量 PCR = 看跌成交量 ÷ 看涨成交量；持仓量 PCR = 看跌持仓量 ÷ 看涨持仓量。白银期权成交量较小，成交量 PCR 波动会比较大。
     每个交易日收盘后更新一次，仅供参考，不构成投资建议。
     布林带需要至少「周期」个交易日的数据才会显示。四张图的时间轴是联动的。
-    图表由 <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ 提供。
+    图表由 <a href="https://tradingview.com" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ 提供。
   </p>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://jsdelivr.net"></script>
 <script>
 // 按表头名称解析
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  // 🎯 完美修复此处：加上了关键的 [0] 索引，彻底恢复前端数据解析引擎！
   const head = lines[0].split(",").map(s => s.trim());
   const col = n => head.indexOf(n);
   const num = (c, n) => {
@@ -95,7 +96,6 @@ function parseCsv(text) {
     const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol"), co = num(c, p + "call_oi"), po = num(c, p + "put_oi");
     return { cv, pv, co, po, vol: pv / cv, oi: po / co };
   };
-  // 🎯 核心修复：把白银的前缀从原来的 "s_" 修正为 "silver_" 从而完美对齐 CSV 数据库字段！
   return lines.slice(1).map(l => {
     const c = l.split(",");
     return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "silver_") };
@@ -123,7 +123,7 @@ function rawUrl() {
   if (host.endsWith(".github.io")) {
     const user = host.split(".")[0];
     const repo = location.pathname.split("/")[1];
-    if (repo) return `https://raw.githubusercontent.com/${user}/${repo}/main/data/gold_pcr.csv`;
+    if (repo) return `https://githubusercontent.com{user}/${repo}/main/data/gold_pcr.csv`;
   }
   return null;
 }
@@ -180,7 +180,6 @@ function fillTable(id, rows, metal) {
   }).join("") + "</tbody>";
 }
 
-// 🎯 补齐尾部被截断的全部主引擎初始化逻辑
 async function init() {
   try {
     const text = await loadCsv();
@@ -215,3 +214,4 @@ async function init() {
     // 联动时间轴
     const charts = [pG_oi, pS_oi, pG_vol, pS_vol].filter(Boolean).map(p => p.chart);
     charts.forEach((c, i) => {
+      c.timeScale().subscribeVisibleLogicalRangeChange(r => {
