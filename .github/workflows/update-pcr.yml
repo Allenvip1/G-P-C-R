@@ -17,7 +17,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r scripts/requirements.txt
-      - run: python scripts/update.py
+      - name: 抓取 CME 日报（PCR 与按到期月拆分）
+        id: pcr
+        continue-on-error: true      # 失败也继续去抓金价/提交，最后再把任务标红
+        run: python scripts/update.py
+      - name: 抓取金价、银价日线（Yahoo，失败只告警）
+        continue-on-error: true
+        run: python scripts/fetch_price.py
       - name: Commit
         run: |
           git config user.name "pcr-bot"
@@ -29,3 +35,6 @@ jobs:
             git commit -m "update PCR $(date -u +%F)"
             git push
           fi
+      - name: CME 抓取失败时把任务标红
+        if: steps.pcr.outcome == 'failure'
+        run: exit 1

@@ -5,39 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COMEX 黄金 / 白银期权 PCR</title>
 <style>
-  :root { --bg:#131722; --panel:#1e222d; --line:#2a2e39; --text:#d1d4dc; --dim:#868993; --oi:#ff9800; --vol:#26c6da; }
+  :root { --bg:#131722; --panel:#1e222d; --line:#2a2e39; --text:#d1d4dc; --dim:#868993; --up:#ef5350; --down:#26a69a; --pcr1:#ffb300; --pcr2:#29b6f6; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-  .wrap { max-width:1300px; margin:0 auto; padding:16px; }
+  .wrap { max-width:1500px; margin:0 auto; padding:14px 16px 40px; }
   h1 { font-size:20px; margin:0 0 4px; }
   h2 { font-size:15px; margin:18px 0 8px; display:flex; align-items:center; gap:8px; }
-  h2 small { color:var(--dim); font-size:13px; font-weight:400; }
-  h2 small b { color:var(--text); }
-  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
-  #meta { color:var(--dim); margin-bottom:12px; }
-  #meta b { color:var(--text); }
-  .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
-  .controls label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
-  .controls input[type=number] { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; width:64px; }
-  .controls select { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+  #meta, #metaX { color:var(--dim); font-size:12px; margin-bottom:10px; }
+  #meta b, #metaX b { color:var(--text); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:9px 12px; }
+  .controls.sticky { position:sticky; top:0; z-index:20; box-shadow:0 4px 10px rgba(0,0,0,.35); margin-bottom:10px; }
+  .controls label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
+  .controls input[type=number], .controls input[type=date], .controls select { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; font:inherit; }
+  .controls input[type=number] { width:62px; }
+  .controls button, .tgbtn { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:3px 10px; cursor:pointer; font:inherit; font-size:13px; }
+  .controls button:hover, .tgbtn:hover, .tg:hover { border-color:#4c9aff; }
+  .sep { width:1px; align-self:stretch; background:var(--line); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .seg label { padding:3px 12px; margin:0; border-right:1px solid var(--line); background:var(--bg); }
+  .seg label:last-child { border-right:0; }
+  .seg input { display:none; }
+  .seg label:has(input:checked) { background:#2962ff; color:#fff; }
+  @media (max-width: 800px) { .controls.sticky { position:static; box-shadow:none; } }
+  .blk { margin-top:14px; }
+  .blkT { margin:0 0 6px; font-size:17px; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 22px; font-size:13px; padding:6px 10px; margin-bottom:6px; background:var(--panel); border:1px solid var(--line); border-radius:6px; min-height:34px; }
+  .legend b { color:#fff; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 8px 4px; margin-bottom:6px; }
+  .ttl { font-size:13px; color:var(--dim); margin:0 0 4px 4px; }
+  .ttl i { display:inline-block; width:12px; height:3px; margin-right:6px; vertical-align:middle; }
+  .ttl .exp { color:#ffd180; margin-left:10px; }
+  details.dt { background:var(--panel); border:1px solid var(--line); border-radius:6px; margin-top:12px; }
+  details.dt > summary { cursor:pointer; padding:10px 14px; font-size:15px; font-weight:600; list-style:none; }
+  details.dt > summary::before { content:"▶ "; color:var(--dim); font-size:12px; }
+  details.dt[open] > summary::before { content:"▼ "; }
+  .dtc { padding:2px 14px 14px; }
   .lg { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
   .lg i { width:12px; height:3px; display:inline-block; }
   .tg { cursor:pointer; user-select:none; padding:3px 8px; border:1px solid var(--line); border-radius:4px; background:var(--panel); }
   .tg input { margin:0; }
-  .tgbtn { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:3px 10px; cursor:pointer; font:inherit; font-size:13px; }
-  .tgbtn:hover, .tg:hover { border-color:#4c9aff; }
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
   .grid section { min-width:0; }
   @media (max-width: 800px) { .grid { grid-template-columns:1fr; } }
   .chart { width:100%; height:260px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-  .empty { height:100%; display:flex; align-items:center; justify-content:center; color:var(--dim); }
   .tablewrap { overflow-x:auto; }
-  table { border-collapse:collapse; width:100%; min-width:640px; }
-  th, td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table { border-collapse:collapse; width:100%; min-width:560px; font-size:13px; }
+  th, td { text-align:right; padding:5px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   th:first-child, td:first-child { text-align:left; }
   th { color:var(--dim); font-weight:500; }
-  .note { color:var(--dim); font-size:12px; margin-top:16px; }
-  .err { color:#ef5350; padding:20px 0; }
+  .top { color:var(--up); } .bot { color:var(--down); }
+  .pos { color:#ff8a80; } .neg { color:#69f0ae; }
+  .hint { color:var(--dim); font-size:12px; margin:4px 0 8px; }
+  .note { color:var(--dim); font-size:12px; margin-top:16px; line-height:1.7; }
+  .err { color:#ef5350; padding:12px 0; }
   a { color:#6ea8fe; }
 </style>
 </head>
@@ -46,425 +66,533 @@
   <h1>COMEX 黄金 / 白银期权 PCR（日线）</h1>
   <div id="meta">加载中…</div>
 
-  <div class="controls">
-    <label><input type="checkbox" id="bbOn" checked> 显示布林带</label>
-    <label>周期 <input type="number" id="bbLen" value="20" min="2" max="200"></label>
-    <label>倍数 <input type="number" id="bbMult" value="2" min="0.1" max="5" step="0.1"></label>
-  </div>
-
-  <div class="grid">
-    <section>
-      <h2><span class="dot" style="background:var(--oi)"></span>黄金 · 持仓量 PCR <small id="nowGoldOI"></small></h2>
-      <div id="cGoldOI" class="chart"></div>
-    </section>
-    <section>
-      <h2><span class="dot" style="background:var(--oi)"></span>白银 · 持仓量 PCR <small id="nowSilverOI"></small></h2>
-      <div id="cSilverOI" class="chart"></div>
-    </section>
-    <section>
-      <h2><span class="dot" style="background:var(--vol)"></span>黄金 · 成交量 PCR（日） <small id="nowGoldVol"></small></h2>
-      <div id="cGoldVol" class="chart"></div>
-    </section>
-    <section>
-      <h2><span class="dot" style="background:var(--vol)"></span>白银 · 成交量 PCR（日） <small id="nowSilverVol"></small></h2>
-      <div id="cSilverVol" class="chart"></div>
-    </section>
+  <div class="controls sticky">
+    <span class="seg" title="PCR 的口径">
+      <label><input type="radio" name="mode" value="oi" checked>持仓量 PCR</label><label><input type="radio" name="mode" value="vol">成交量 PCR</label>
+    </span>
+    <span class="sep"></span>
+    <label>从 <input type="date" id="from"></label>
+    <label>到 <input type="date" id="to"></label>
+    <button type="button" id="rngPcr">PCR 数据范围</button>
+    <button type="button" id="rngAll">全部价格历史</button>
+    <span class="sep"></span>
+    <label title="日报在下一个交易日凌晨才发布，所以 PCR 应该延后 1 个交易日显示才没有未来函数。想看领先/滞后关系可以改这个数。">PCR 延后 <input type="number" id="lag" value="1" min="-10" max="20"> 日</label>
+    <label title="短期 PCR 只统计标准月度期权中距到期不超过这个天数的合约（不含周度）">短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
+    <span class="sep"></span>
+    <label><input type="checkbox" id="bbOn" checked> 布林带</label>
+    <label>周期 <input type="number" id="bbLen" value="20" min="2" max="120"></label>
+    <label>倍数 <input type="number" id="bbMult" value="2" min="0.5" max="5" step="0.1"></label>
+    <span class="sep"></span>
+    <label><input type="checkbox" id="pivOn" checked> 价格顶底</label>
+    <label>反转 ≥ <input type="number" id="pivPct" value="8" min="2" max="30" step="0.5"> %</label>
+    <label><input type="checkbox" id="expOn" checked> 到期日圆点</label>
+    <label><input type="checkbox" id="ovOn"> PCR 叠加到价格图</label>
   </div>
   <div id="err" class="err" style="display:none"></div>
 
-  <h2>黄金 · 最近数据（最新在前）</h2>
-  <div class="tablewrap"><table id="tblGold"></table></div>
-  <h2>白银 · 最近数据（最新在前）</h2>
-  <div class="tablewrap"><table id="tblSilver"></table></div>
+  <div id="blocks"></div>
 
-  <h1 style="margin-top:32px">按到期期限拆分 PCR</h1>
-  <div id="metaX">加载中…</div>
-  <div class="controls">
-    <label>短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
-    <label>中期 ≤ <input type="number" id="t2" value="90" min="2" max="800"> 天（更远为长期）</label>
-    <label>近期合计 ≤ <input type="number" id="tR" value="90" min="2" max="800"> 天（含周度）</label>
-    <label>成交量 PCR 最小看涨成交量 <input type="number" id="minCv" value="20" min="0" max="100000"></label>
-    <label>布林带对象
-      <select id="bbBucket">
-        <option value="r" selected>近期合计</option><option value="w">周度</option><option value="s">短期</option>
-        <option value="m">中期</option><option value="l">长期</option>
-      </select>
-    </label>
-    <label><input type="checkbox" id="bbOnX" checked> 显示布林带（周期、倍数同上）</label>
-  </div>
-  <div id="legendX" style="margin:8px 0 0; display:flex; gap:16px; flex-wrap:wrap"></div>
-  <div class="grid" id="gridX">
-    <section><h2>黄金 · 持仓量 PCR（按期限，主）</h2><div id="xGoldOI" class="chart"></div></section>
-    <section><h2>白银 · 持仓量 PCR（按期限，主）</h2><div id="xSilverOI" class="chart"></div></section>
-    <section><h2>黄金 · 成交量 PCR（按期限，参考）</h2><div id="xGoldVol" class="chart"></div></section>
-    <section><h2>白银 · 成交量 PCR（按期限，参考）</h2><div id="xSilverVol" class="chart"></div></section>
-  </div>
-  <h2>黄金 · 最新一天各期限明细</h2>
-  <div class="tablewrap"><table id="tblXGold"></table></div>
-  <h2>白银 · 最新一天各期限明细</h2>
-  <div class="tablewrap"><table id="tblXSilver"></table></div>
-  <p class="note">
-    按到期期限拆分的数据来自 CME 日报 PG64（金属期权明细）。周度仅含周五周度期权（OG1–OG4、SO1–SO4）；周一至周四周度和微型期权的看涨看跌在 PDF 里混排，无法区分，未计入。
-    月度期权按到期日距公报日的天数分为短期、中期、长期，阈值可在上方修改。月度部分合计与上面的 PG02B 汇总一致，周度不在汇总里。
-    拆分数据从 2026-03-23 开始。
-    「近期合计」= 周度 + 距到期 ≤90 天的月度期权合计。
-  </p>
+  <details class="dt" id="dtSplit">
+    <summary>按到期期限拆分 PCR（近期合计 / 周度 / 短期 / 中期 / 长期）</summary>
+    <div class="dtc">
+      <div id="metaX">展开后加载…</div>
+      <div class="controls">
+        <label>中期 ≤ <input type="number" id="t2" value="90" min="2" max="800"> 天（更远为长期；短期天数在上方控制条）</label>
+        <label>近期合计 ≤ <input type="number" id="tR" value="90" min="2" max="800"> 天（含周度）</label>
+        <label>成交量 PCR 最小看涨成交量 <input type="number" id="minCv" value="20" min="0" max="100000"></label>
+        <label>布林带对象
+          <select id="bbBucket">
+            <option value="r" selected>近期合计</option><option value="w">周度</option><option value="s">短期</option>
+            <option value="m">中期</option><option value="l">长期</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="bbOnX" checked> 显示布林带（周期、倍数见上方）</label>
+      </div>
+      <div id="legendX" style="margin:8px 0 0; display:flex; gap:16px; flex-wrap:wrap"></div>
+      <div class="grid" id="gridX">
+        <section><h2>黄金 · 持仓量 PCR（按期限，主）</h2><div id="xGoldOI" class="chart"></div></section>
+        <section><h2>白银 · 持仓量 PCR（按期限，主）</h2><div id="xSilverOI" class="chart"></div></section>
+        <section><h2>黄金 · 成交量 PCR（按期限，参考）</h2><div id="xGoldVol" class="chart"></div></section>
+        <section><h2>白银 · 成交量 PCR（按期限，参考）</h2><div id="xSilverVol" class="chart"></div></section>
+      </div>
+      <h2>黄金 · 最新一天各期限明细</h2>
+      <div class="tablewrap"><table id="tblXGold"></table></div>
+      <h2>白银 · 最新一天各期限明细</h2>
+      <div class="tablewrap"><table id="tblXSilver"></table></div>
+      <p class="note">
+        按到期期限拆分的数据来自 CME 日报 PG64（金属期权明细）。周度仅含周五周度期权（OG1–OG4、SO1–SO4）；周一至周四周度和微型期权的看涨看跌在 PDF 里混排，无法区分，未计入。
+        月度期权按到期日距公报日的天数分为短期、中期、长期，阈值可修改。月度部分合计与 PG02B 汇总一致，周度不在汇总里。拆分数据从 2026-03-23 开始。
+        「近期合计」= 周度 + 距到期 ≤90 天的月度期权合计。
+      </p>
+    </div>
+  </details>
+
+  <details class="dt" id="dtPiv">
+    <summary>价格顶底位置的 PCR 与相关性</summary>
+    <div class="dtc" id="pivBox"></div>
+  </details>
+
+  <details class="dt" id="dtRecent">
+    <summary>最近 30 个交易日明细（PG02B 汇总）</summary>
+    <div class="dtc">
+      <h2>黄金 · 最近数据（最新在前）</h2>
+      <div class="tablewrap"><table id="tblGold"></table></div>
+      <h2>白银 · 最近数据（最新在前）</h2>
+      <div class="tablewrap"><table id="tblSilver"></table></div>
+    </div>
+  </details>
 
   <p class="note">
-    数据来源：CME Group Daily Bulletin（PG02B）。黄金为 COMEX 黄金期权（OG），白银为 COMEX 白银期权（SO），均为全部到期月合计，不含周度期权。
-    成交量 PCR = 看跌成交量 ÷ 看涨成交量；持仓量 PCR = 看跌持仓量 ÷ 看涨持仓量。白银期权成交量较小，成交量 PCR 波动会比较大。
-    每个交易日收盘后更新一次，仅供参考，不构成投资建议。
-    布林带需要至少「周期」个交易日的数据才会显示。四张图的时间轴是联动的。
+    数据来源：CME Group Daily Bulletin（PG02B 汇总、PG64 按到期月明细）；金价、银价为 Yahoo Finance 的 COMEX 黄金(GC=F)、白银(SI=F)期货连续合约日线（换月时可能有小的跳空）。
+    黄金为 COMEX 黄金期权（OG），白银为 COMEX 白银期权（SO）。PCR = 看跌 ÷ 看涨（持仓量或成交量）；总 PCR 为全部标准月度到期月合计，不含周度。<br>
+    短期 PCR 在合约到期滚出时会台阶式跳变（图上的黄色圆点），不一定代表情绪变化。PCR 默认延后 1 个交易日显示。白银期权成交量很小，成交量口径噪声大。<br>
+    PCR 数据只有约半年，行情以下跌震荡为主，图上和表里的"规律"只是线索，不构成投资建议。每个交易日更新。
     图表由 <a href="https://tradingview.com" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ 提供。
   </p>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
 <script>
-// 按表头名称解析 CSV
+// ───────────────────────── 通用 ─────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const fmt4 = v => (v == null || isNaN(v)) ? "–" : v.toFixed(4);
+const fmt1 = v => (v == null || isNaN(v)) ? "–" : v.toFixed(1);
+const PF = { type: "price", precision: 4, minMove: 0.0001 };
+
+async function loadAny(rel) {
+  const urls = [rel];
+  const host = location.hostname;
+  if (host.endsWith(".github.io")) {
+    const user = host.split(".")[0], repo = location.pathname.split("/")[1];
+    if (repo) urls.push(`https://raw.githubusercontent.com/${user}/${repo}/main/${rel}`);
+  }
+  for (const u of urls) {
+    try { const r = await fetch(u, { cache: "no-cache" }); if (r.ok) return await r.text(); } catch (e) {}
+  }
+  throw new Error("无法加载 " + rel);
+}
+// gold_pcr.csv（PG02B 汇总）
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
   const head = lines[0].split(",").map(s => s.trim());
   const col = n => head.indexOf(n);
-  const num = (c, n) => {
-    const i = col(n);
-    if (i < 0 || c[i] === undefined || c[i].trim() === "") return NaN;
-    return +c[i];
-  };
+  const num = (c, n) => { const i = col(n); if (i < 0 || c[i] === undefined || c[i].trim() === "") return NaN; return +c[i]; };
   const mk = (c, p) => {
-    const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol");
-    const co = num(c, p + "call_oi"),  po = num(c, p + "put_oi");
+    const cv = num(c, p + "call_vol"), pv = num(c, p + "put_vol"), co = num(c, p + "call_oi"), po = num(c, p + "put_oi");
     return { cv, pv, co, po, vol: pv / cv, oi: po / co };
   };
+  return lines.slice(1).map(l => { const c = l.split(","); return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "silver_") }; })
+    .filter(r => r.date).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+// by_expiry.csv（PG64 按到期月）
+function parseExpiry(text) {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  const head = lines[0].split(",").map(s => s.trim());
+  const ix = n => head.indexOf(n);
   return lines.slice(1).map(l => {
-    const c = l.split(",");
-    return { date: (c[col("date")] || "").trim(), gold: mk(c, ""), silver: mk(c, "silver_") };
-  }).filter(r => r.date).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const c = l.split(","); const g = n => (c[ix(n)] || "").trim();
+    return { date: g("date"), metal: g("metal"), kind: g("kind"), month: g("month"), expiry: g("expiry"),
+             cv: +g("call_vol") || 0, pv: +g("put_vol") || 0, co: +g("call_oi") || 0, po: +g("put_oi") || 0 };
+  }).filter(r => r.date);
+}
+function parsePrice(text) {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean); const head = lines[0].split(",").map(s => s.trim());
+  const ix = n => head.indexOf(n);
+  return lines.slice(1).map(l => { const c = l.split(","); return { time: c[ix("date")].trim(), open: +c[ix("open")], high: +c[ix("high")], low: +c[ix("low")], close: +c[ix("close")] }; })
+    .filter(r => r.time && isFinite(r.close)).sort((a, b) => (a.time < b.time ? -1 : 1));
 }
 
-function bollinger(points, len, mult) {
-  const up = [], lo = [], mid = [];
-  for (let i = len - 1; i < points.length; i++) {
-    const w = points.slice(i - len + 1, i + 1).map(p => p.value);
+// ───────────────────────── 联动主视图 ─────────────────────────
+const METALS = [
+  { key: "gold", name: "黄金", priceFile: "data/price_gold.csv", priceName: "COMEX 黄金期货连续合约 GC=F" },
+  { key: "silver", name: "白银", priceFile: "data/price_silver.csv", priceName: "COMEX 白银期货连续合约 SI=F" },
+];
+let PCRROWS = [], EXP = [];
+const VIEWS = [];         // 每个品种一个视图
+const ALLCH = [];         // {metal, chart, series, get}
+
+const common = {
+  layout: { background: { color: "#1e222d" }, textColor: "#d1d4dc" },
+  grid: { vertLines: { color: "#262b38" }, horzLines: { color: "#262b38" } },
+  rightPriceScale: { borderColor: "#2a2e39", minimumWidth: 74 },
+  timeScale: { borderColor: "#2a2e39", rightOffset: 3 },
+  crosshair: { mode: 0 },
+};
+function mkChart(el, h) { return LightweightCharts.createChart(el, { ...common, width: el.clientWidth, height: h }); }
+function pcrSeries(chart, color) {
+  const bbo = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
+  return { line: chart.addLineSeries({ color, lineWidth: 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }),
+    up: chart.addLineSeries({ ...bbo }), lo: chart.addLineSeries({ ...bbo }), mid: chart.addLineSeries({ ...bbo, color: "#868993", lineStyle: 2 }) };
+}
+function bollinger(vals, len, mult) {
+  return vals.map((v, i) => {
+    if (i < len - 1) return null;
+    const w = vals.slice(i - len + 1, i + 1);
     const m = w.reduce((a, b) => a + b, 0) / len;
     const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len);
-    const t = points[i].time;
-    mid.push({ time: t, value: m });
-    up.push({ time: t, value: m + mult * sd });
-    lo.push({ time: t, value: m - mult * sd });
-  }
-  return { up, lo, mid };
-}
-
-const $ = id => document.getElementById(id);
-
-function rawUrl() {
-  const host = location.hostname;
-  if (host.endsWith(".github.io")) {
-    const user = host.split(".")[0];
-    const repo = location.pathname.split("/")[1];
-    if (repo) return `https://raw.githubusercontent.com/${user}/${repo}/main/data/gold_pcr.csv`;
-  }
-  return null;
-}
-
-async function loadCsv() {
-  // 先读相对路径（同源，最稳），失败再尝试 raw.githubusercontent.com
-  const urls = ["data/gold_pcr.csv", rawUrl()].filter(Boolean);
-  for (const u of urls) {
-    try {
-      const r = await fetch(u, { cache: "no-cache" });
-      if (r.ok) return await r.text();
-    } catch (e) { }
-  }
-  throw new Error("无法加载 data/gold_pcr.csv");
-}
-
-const fmt = n => n.toLocaleString("en-US");
-const PF = { type: "price", precision: 4, minMove: 0.0001 };
-
-function makePanel(elId, color, title, pts) {
-  const el = $(elId);
-  if (!pts.length) {
-    el.innerHTML = '<div class="empty">暂无数据</div>';
-    return null;
-  }
-  const chart = LightweightCharts.createChart(el, {
-    width: el.clientWidth, height: 260,
-    layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
-    grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
-    rightPriceScale: { borderColor: "#2a2e39" },
-    timeScale: { borderColor: "#2a2e39" },
+    return { mid: m, up: m + mult * sd, lo: m - mult * sd, pb: sd > 0 ? (v - (m - mult * sd)) / (2 * mult * sd) : null };
   });
-  const line = chart.addLineSeries({ color, lineWidth: 2, title, priceFormat: PF });
-  line.setData(pts);
-  const last = pts[pts.length - 1];
-  line.setMarkers([{ time: last.time, position: "aboveBar", color, shape: "circle", text: last.value.toFixed(4) }]);
-  const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
-  const up  = chart.addLineSeries({ ...bbOpt });
-  const lo  = chart.addLineSeries({ ...bbOpt });
-  const mid = chart.addLineSeries({ ...bbOpt, color: "#868993", lineStyle: 2 });
-  return { el, chart, pts, up, lo, mid };
+}
+function settings() {
+  return { mode: document.querySelector('input[name="mode"]:checked').value, from: $("from").value, to: $("to").value,
+    lag: Math.round(+$("lag").value || 0), t1: Math.max(1, +$("t1").value || 30), minCv: Math.max(0, +$("minCv").value || 0),
+    bbOn: $("bbOn").checked, bbLen: Math.max(2, +$("bbLen").value || 20), bbMult: +$("bbMult").value || 2,
+    pivOn: $("pivOn").checked, pivPct: Math.max(1, +$("pivPct").value || 8) / 100, expOn: $("expOn").checked, ovOn: $("ovOn").checked };
+}
+// 原始观测序列
+function obsTotal(m, st) {
+  const out = [];
+  for (const r of PCRROWS) { const x = r[m.key], v = st.mode === "oi" ? x.oi : x.vol; if (isFinite(v) && v > 0) out.push({ date: r.date, value: v }); }
+  return out;
+}
+function obsShort(m, st) {
+  const agg = new Map();
+  for (const r of EXP) {
+    if (r.metal !== m.key || r.kind !== "monthly" || !r.expiry) continue;
+    const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
+    if (dte > st.t1) continue;
+    let a = agg.get(r.date); if (!a) agg.set(r.date, a = [0, 0, 0, 0]);
+    a[0] += r.cv; a[1] += r.pv; a[2] += r.co; a[3] += r.po;
+  }
+  const out = [];
+  for (const [d, a] of [...agg.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) {
+    if (st.mode === "oi") { if (a[2] > 0) out.push({ date: d, value: a[3] / a[2] }); }
+    else if (a[0] > 0 && a[0] >= st.minCv) out.push({ date: d, value: a[1] / a[0] });
+  }
+  return out;
+}
+// 映射到该品种的价格交易日（含延后）
+function prepare(v, series, st) {
+  const bbs = bollinger(series.map(r => r.value), st.bbLen, st.bbMult), out = [];
+  series.forEach((r, k) => {
+    const base = v.idxOnOrAfter(r.date); if (base < 0) return;
+    const ei = base + st.lag; if (ei < 0 || ei >= v.pDates.length) return;
+    out.push({ date: r.date, ei, time: v.pDates[ei], value: r.value, bb: bbs[k], k });
+  });
+  return out;
+}
+const lineData = (seq, key) => seq.map(r => ({ time: r.time, value: key === "v" ? r.value : (r.bb ? r.bb[key] : null) })).filter(p => p.value != null && !isNaN(p.value));
+const known = (seq, t) => { let best = null; for (const r of seq) { if (r.time <= t) best = r; else break; } return best; };
+function zigzag(rows, thr) {
+  const piv = []; if (rows.length < 3) return piv;
+  let trend = null, hi = { i: 0, v: rows[0].high }, lo = { i: 0, v: rows[0].low };
+  for (let i = 1; i < rows.length; i++) {
+    const h = rows[i].high, l = rows[i].low;
+    if (trend === null) {
+      if (h > hi.v) hi = { i, v: h }; if (l < lo.v) lo = { i, v: l };
+      if (hi.v / lo.v - 1 >= thr) { if (hi.i > lo.i) { piv.push({ t: "底", ...lo, ok: true }); trend = "up"; } else { piv.push({ t: "顶", ...hi, ok: true }); trend = "down"; } }
+    } else if (trend === "up") {
+      if (h > hi.v) hi = { i, v: h };
+      if (hi.v / l - 1 >= thr) { piv.push({ t: "顶", ...hi, ok: true }); trend = "down"; lo = { i, v: l }; }
+    } else {
+      if (l < lo.v) lo = { i, v: l };
+      if (h / lo.v - 1 >= thr) { piv.push({ t: "底", ...lo, ok: true }); trend = "up"; hi = { i, v: h }; }
+    }
+  }
+  if (trend === "up") piv.push({ t: "顶", ...hi, ok: false }); else if (trend === "down") piv.push({ t: "底", ...lo, ok: false });
+  piv.forEach(p => { if (p.i === 0) p.ok = false; });
+  return piv;
+}
+function rank(a) {
+  const idx = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]); const r = new Array(a.length);
+  for (let i = 0; i < idx.length;) { let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++; const avg = (i + j) / 2; for (let k = i; k <= j; k++) r[idx[k][1]] = avg; i = j + 1; }
+  return r;
+}
+function spearman(x, y) {
+  if (x.length < 8) return null;
+  const rx = rank(x), ry = rank(y), n = x.length, mx = rx.reduce((a, b) => a + b, 0) / n, my = ry.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (rx[i] - mx) * (ry[i] - my); sxx += (rx[i] - mx) ** 2; syy += (ry[i] - my) ** 2; }
+  return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
+}
+const clsr = c => c == null ? "" : (c > 0.25 ? "pos" : c < -0.25 ? "neg" : "");
+
+function makeView(m) {
+  const P = PRICE[m.key] || [];
+  const v = { m, P, pDates: P.map(r => r.time), PT: [], PS: [] };
+  v.pIdx = new Map(v.pDates.map((d, i) => [d, i]));
+  v.idxOnOrAfter = date => {
+    if (v.pIdx.has(date)) return v.pIdx.get(date);
+    let lo = 0, hi = v.pDates.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (v.pDates[mid] < date) lo = mid + 1; else hi = mid; }
+    return lo < v.pDates.length ? lo : -1;
+  };
+  v.priceByTime = new Map(P.map(r => [r.time, r]));
+  const k = m.key;
+  const blk = document.createElement("section"); blk.className = "blk";
+  blk.innerHTML = `<h2 class="blkT">${m.name} · 价格 vs 期权 PCR</h2><div class="legend" id="lg_${k}"></div>
+    <div class="card"><div class="ttl">${m.name}日线（${m.priceName}）· 红涨绿跌</div><div id="cp_${k}"></div></div>
+    <div class="card"><div class="ttl"><i style="background:var(--pcr1)"></i><span id="tt_${k}"></span></div><div id="ct_${k}"></div></div>
+    <div class="card"><div class="ttl"><i style="background:var(--pcr2)"></i><span id="ts_${k}"></span><span class="exp">圆点 = 合约到期日（到期合约滚出，曲线会台阶式跳变）</span></div><div id="cs_${k}"></div></div>`;
+  $("blocks").appendChild(blk);
+  if (!P.length) { $("lg_" + k).textContent = "价格数据未加载（data/" + m.priceFile.split("/").pop() + "）"; return null; }
+  v.cP = mkChart($("cp_" + k), 330); v.cT = mkChart($("ct_" + k), 190); v.cS = mkChart($("cs_" + k), 190);
+  v.cP.applyOptions({ leftPriceScale: { visible: false, borderColor: "#2a2e39", minimumWidth: 60 } });
+  v.candle = v.cP.addCandlestickSeries({ upColor: "#ef5350", downColor: "#26a69a", borderUpColor: "#ef5350", borderDownColor: "#26a69a", wickUpColor: "#ef5350", wickDownColor: "#26a69a",
+    priceFormat: { type: "price", precision: k === "gold" ? 1 : 2, minMove: k === "gold" ? 0.1 : 0.01 } });
+  v.candle.setData(P);
+  // 隐藏的"日历"系列：保证三张图横轴一致，显示范围早于 PCR 第一个数据点时也不会出错
+  [v.cT, v.cS].forEach(c => c.addLineSeries({ visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }).setData(v.pDates.map(t => ({ time: t }))));
+  v.sT = pcrSeries(v.cT, "#ffb300"); v.sS = pcrSeries(v.cS, "#29b6f6");
+  v.expDots = v.cS.addLineSeries({ color: "#ffd180", lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 4, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, priceFormat: PF });
+  const ov = c => v.cP.addLineSeries({ color: c, lineWidth: 2, priceScaleId: "left", priceFormat: PF, visible: false, lastValueVisible: false, priceLineVisible: false });
+  v.ovT = ov("#ffb300"); v.ovS = ov("#29b6f6");
+  ALLCH.push({ metal: k, chart: v.cP, series: v.candle, get: t => { const r = v.priceByTime.get(t); return r ? r.close : null; } });
+  ALLCH.push({ metal: k, chart: v.cT, series: v.sT.line, get: t => { const r = known(v.PT, t); return r ? r.value : null; } });
+  ALLCH.push({ metal: k, chart: v.cS, series: v.sS.line, get: t => { const r = known(v.PS, t); return r ? r.value : null; } });
+  return v;
 }
 
-function series(rows, metal, key) {
-  return rows
-    .filter(r => r[metal] && isFinite(r[metal][key]) && r[metal][key] > 0)
-    .map(r => ({ time: r.date, value: r[metal][key] }));
+function latestAtOrBefore(seq, ei) { let best = null; for (const r of seq) { if (r.ei <= ei) best = r; else break; } return best; }
+function seqValueAt(seq, k) { const r = seq.find(s => s.k === k); return r ? r.value : null; }
+
+function corrRow(v, name, seq, st) {
+  const cells = [];
+  for (const k of [5, 10, 20]) {
+    const x = [], y = [];
+    seq.forEach(r => { const pb = r.bb && r.bb.pb; if (pb == null || r.time < st.from || r.time > st.to) return; const j = r.ei + k; if (j >= v.P.length) return; x.push(pb); y.push(v.P[j].close / v.P[r.ei].close - 1); });
+    const c = spearman(x, y); cells.push(`<td class="${clsr(c)}">${c == null ? "–" : c.toFixed(2)} <span style="color:var(--dim)">(n=${x.length})</span></td>`);
+  }
+  const x = [], y = [];
+  seq.forEach(r => { if (r.k < 5 || r.time < st.from || r.time > st.to || r.ei < 5) return; const prev = seqValueAt(seq, r.k - 5); if (prev == null) return; x.push(r.value - prev); y.push(v.P[r.ei].close / v.P[r.ei - 5].close - 1); });
+  const c = spearman(x, y); cells.push(`<td class="${clsr(c)}">${c == null ? "–" : c.toFixed(2)} <span style="color:var(--dim)">(n=${x.length})</span></td>`);
+  return `<tr><td>${name}</td>${cells.join("")}</tr>`;
 }
 
+function renderView(v, st) {
+  const m = v.m, k = m.key, modeName = st.mode === "oi" ? "持仓量" : "成交量";
+  v.PT = prepare(v, obsTotal(m, st), st); v.PS = prepare(v, obsShort(m, st), st);
+  $("tt_" + k).textContent = `总${modeName} PCR（全部标准月度到期月，不含周度）`;
+  $("ts_" + k).textContent = `短期${modeName} PCR（标准月度期权，距到期 ≤${st.t1} 天，不含周度）`;
+  for (const [seq, s, o] of [[v.PT, v.sT, v.ovT], [v.PS, v.sS, v.ovS]]) {
+    s.line.setData(lineData(seq, "v")); o.setData(lineData(seq, "v"));
+    ["up", "lo", "mid"].forEach(key => s[key].setData(st.bbOn ? lineData(seq, key) : []));
+    o.applyOptions({ visible: st.ovOn });
+  }
+  v.cP.applyOptions({ leftPriceScale: { visible: st.ovOn } });
+  // 价格顶底
+  const inRange = v.P.map((r, i) => ({ ...r, i })).filter(r => r.time >= st.from && r.time <= st.to);
+  const piv = st.pivOn ? zigzag(inRange, st.pivPct) : [];
+  v.candle.setMarkers(piv.map(p => ({ time: inRange[p.i].time, position: p.t === "顶" ? "aboveBar" : "belowBar", shape: p.t === "顶" ? "arrowDown" : "arrowUp",
+    color: p.ok ? (p.t === "顶" ? "#ff5252" : "#00e676") : "#b0bec5", text: `${p.t}${p.ok ? "" : "?"} ${Math.round(p.v)}` })));
+  // 到期日圆点（放在短期曲线上最近的数据点）
+  const sdata = lineData(v.PS, "v"), mk = [];
+  if (st.expOn) EXPIRIES[k].forEach(e => { if (e < st.from || e > st.to) return; const p = sdata.find(d => d.time >= e); if (p && !mk.some(x => x.time === p.time)) mk.push({ time: p.time, value: p.value }); });
+  mk.sort((a, b) => (a.time < b.time ? -1 : 1)); v.expDots.setData(mk);
+  // 表格
+  const rows = piv.map(p => {
+    const r = inRange[p.i], ei = r.i, a = latestAtOrBefore(v.PT, ei), b = latestAtOrBefore(v.PS, ei);
+    const cell = x => x ? `${fmt4(x.value)} <span style="color:var(--dim)">%B ${x.bb && x.bb.pb != null ? x.bb.pb.toFixed(2) : "–"}</span>` : "–";
+    return `<tr><td>${r.time}</td><td class="${p.t === "顶" ? "top" : "bot"}">${p.t}${p.ok ? "" : "（待确认）"}</td><td>${fmt1(p.v)}</td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
+  });
+  $("pv_" + k).innerHTML = `<tr><th>日期</th><th>类型</th><th>价格</th><th>总${modeName} PCR</th><th>短期${modeName} PCR</th></tr>` + (rows.join("") || `<tr><td colspan="5" style="text-align:center;color:var(--dim)">当前范围内没有符合条件的顶底（试试调小反转百分比）</td></tr>`);
+  $("cr_" + k).innerHTML = `<tr><th>PCR</th><th>%B ↔ 未来5日收益</th><th>%B ↔ 未来10日</th><th>%B ↔ 未来20日</th><th>5日变化 ↔ 同期5日收益</th></tr>` +
+    corrRow(v, `总${modeName} PCR`, v.PT, st) + corrRow(v, `短期${modeName} PCR`, v.PS, st);
+}
+
+const EXPIRIES = { gold: [], silver: [] };
+function updateLegends(t0, onlyMetal) {
+  VIEWS.forEach(v => {
+    if (onlyMetal && v.m.key !== onlyMetal) return;     // 不联动时，只更新光标所在品种的图例
+    let t = t0;
+    if (!t || !v.priceByTime.has(t)) { const to = $("to").value; t = v.priceByTime.has(to) ? to : (v.pDates[v.pDates.length - 1]); }
+    const p = v.priceByTime.get(t), a = known(v.PT, t), b = known(v.PS, t);
+    const pb = x => x && x.bb && x.bb.pb != null ? ` <span style="color:var(--dim)">%B ${x.bb.pb.toFixed(2)}</span>` : "";
+    $("lg_" + v.m.key).innerHTML = `<span>日期 <b>${t}</b></span>` + (p ? `<span>开 <b>${fmt1(p.open)}</b> 高 <b>${fmt1(p.high)}</b> 低 <b>${fmt1(p.low)}</b> 收 <b>${fmt1(p.close)}</b></span>` : "") +
+      `<span style="color:var(--pcr1)">总PCR <b>${a ? fmt4(a.value) : "–"}</b>${pb(a)}</span><span style="color:var(--pcr2)">短期PCR <b>${b ? fmt4(b.value) : "–"}</b>${pb(b)}</span>` +
+      `<span style="color:var(--dim)">（PCR 数据日：${a ? a.date : "–"} / ${b ? b.date : "–"}）</span>`;
+  });
+}
+let syncT = false, syncC = false;
+function groupOf(entry) { return ALLCH.filter(e => e.metal === entry.metal); }   // 只在同一品种的三张图之间联动
+function applyRange() {
+  const r = { from: $("from").value, to: $("to").value };
+  syncT = true; ALLCH.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (err) { e.chart.timeScale().fitContent(); } }); syncT = false;
+}
+function bindSync() {
+  ALLCH.forEach(entry => {
+    entry.chart.timeScale().subscribeVisibleTimeRangeChange(r => {
+      if (syncT || !r) return; syncT = true;
+      groupOf(entry).forEach(o => { if (o !== entry) { try { o.chart.timeScale().setVisibleRange(r); } catch (e) {} } });
+      syncT = false;
+    });
+    entry.chart.subscribeCrosshairMove(param => {
+      if (syncC) return;
+      const t = param.time || null;
+      updateLegends(t, entry.metal);
+      syncC = true;
+      groupOf(entry).forEach(o => {
+        if (o === entry) return;
+        if (!t) { o.chart.clearCrosshairPosition(); return; }
+        const val = o.get(t); if (val == null) o.chart.clearCrosshairPosition(); else o.chart.setCrosshairPosition(val, t, o.series);
+      });
+      syncC = false;
+    });
+  });
+}
+function renderAll(resetRange) {
+  const st = settings();
+  VIEWS.forEach(v => renderView(v, st));
+  if (resetRange) applyRange();
+  updateLegends(null);
+  if (window.splitRender) window.splitRender();
+}
 function fillTable(id, rows, metal) {
   const rs = rows.filter(r => r[metal] && isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
   const head = "<thead><tr><th>日期</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
-  if (!rs.length) {
-    $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>';
-    return;
-  }
-  $(id).innerHTML = head + "<tbody>" + rs.map(r => {
-    const m = r[metal];
-    return `<tr><td>${r.date}</td><td>${fmt(m.cv)}</td><td>${fmt(m.pv)}</td><td>${m.vol.toFixed(4)}</td><td>${fmt(m.co)}</td><td>${fmt(m.po)}</td><td>${m.oi.toFixed(4)}</td></tr>`;
-  }).join("") + "</tbody>";
+  if (!rs.length) { $(id).innerHTML = head + '<tbody><tr><td colspan="7" style="text-align:center;color:var(--dim)">暂无数据</td></tr></tbody>'; return; }
+  $(id).innerHTML = head + "<tbody>" + rs.map(r => { const m = r[metal];
+    return `<tr><td>${r.date}</td><td>${fmt(m.cv)}</td><td>${fmt(m.pv)}</td><td>${m.vol.toFixed(4)}</td><td>${fmt(m.co)}</td><td>${fmt(m.po)}</td><td>${m.oi.toFixed(4)}</td></tr>`; }).join("") + "</tbody>";
 }
 
-// 每个面板显示它自己最后一个有效数据点
-function setNow(id, pts) {
-  if (!pts.length) return;
-  const p = pts[pts.length - 1];
-  $(id).innerHTML = `最新: <b>${p.value.toFixed(4)}</b> (${p.time})`;
-}
-
-async function init() {
+const PRICE = {};
+async function boot() {
   try {
-    const text = await loadCsv();
-    const rows = parseCsv(text);
-    if (!rows.length) throw new Error("数据文件为空");
-
-    const last = rows[rows.length - 1];
-    $("meta").innerHTML = `数据截至 <b>${last.date}</b> | 共 <b>${rows.length}</b> 个交易日`;
-
-    const sGoldOI = series(rows, "gold", "oi");
-    const sSilverOI = series(rows, "silver", "oi");
-    const sGoldVol = series(rows, "gold", "vol");
-    const sSilverVol = series(rows, "silver", "vol");
-
-    const pG_oi  = makePanel("cGoldOI",    "#ff9800", "黄金·持仓 PCR", sGoldOI);
-    const pS_oi  = makePanel("cSilverOI",  "#ff9800", "白银·持仓 PCR", sSilverOI);
-    const pG_vol = makePanel("cGoldVol",   "#26c6da", "黄金·成交 PCR", sGoldVol);
-    const pS_vol = makePanel("cSilverVol", "#26c6da", "白银·成交 PCR", sSilverVol);
-    const panels = [pG_oi, pS_oi, pG_vol, pS_vol];
-
-    const showBB = () => {
-      const on = $("bbOn").checked, len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
-      panels.forEach(p => {
-        if (!p) return;
-        if (!on || p.pts.length < len) { p.up.setData([]); p.lo.setData([]); p.mid.setData([]); }
-        else { const b = bollinger(p.pts, len, mult); p.up.setData(b.up); p.lo.setData(b.lo); p.mid.setData(b.mid); }
-      });
-    };
-
-    setNow("nowGoldOI", sGoldOI);
-    setNow("nowSilverOI", sSilverOI);
-    setNow("nowGoldVol", sGoldVol);
-    setNow("nowSilverVol", sSilverVol);
-
-    showBB();
-    $("bbOn").onchange = showBB;
-    $("bbLen").onchange = showBB;
-    $("bbMult").onchange = showBB;
-
-    // 联动时间轴
-    const charts = panels.filter(Boolean).map(p => p.chart);
-    let syncing = false;
-    charts.forEach((c, i) => {
-      c.timeScale().subscribeVisibleLogicalRangeChange(r => {
-        if (syncing || !r) return;
-        syncing = true;
-        charts.forEach((o, j) => { if (j !== i) o.timeScale().setVisibleLogicalRange(r); });
-        syncing = false;
-      });
-    });
-    charts.forEach(c => c.timeScale().fitContent());
-
-    addEventListener("resize", () =>
-      panels.forEach(p => p && p.chart.applyOptions({ width: p.el.clientWidth })));
-
-    fillTable("tblGold", rows, "gold");
-    fillTable("tblSilver", rows, "silver");
-  } catch (e) {
-    $("meta").textContent = "";
-    const el = $("err");
-    el.style.display = "block";
-    el.textContent = "加载失败：" + e.message;
-  }
+    const [t1, t2] = await Promise.all([loadAny("data/gold_pcr.csv"), loadAny("data/by_expiry.csv")]);
+    PCRROWS = parseCsv(t1); EXP = parseExpiry(t2);
+    if (!PCRROWS.length) throw new Error("数据文件为空");
+  } catch (e) { $("meta").textContent = ""; const el = $("err"); el.style.display = "block"; el.textContent = "加载失败：" + e.message; return; }
+  for (const m of METALS) { try { PRICE[m.key] = parsePrice(await loadAny(m.priceFile)); } catch (e) { PRICE[m.key] = []; } }
+  METALS.forEach(m => { EXPIRIES[m.key] = [...new Set(EXP.filter(r => r.metal === m.key && r.kind === "monthly" && r.expiry).map(r => r.expiry))].sort(); });
+  METALS.forEach(m => { const v = makeView(m); if (v) VIEWS.push(v); });
+  // 顶底表和相关性表容器
+  $("pivBox").innerHTML = `<div class="hint">按"价格从高点回落（或从低点反弹）达到所设百分比"定义顶底；PCR 取当天已经能看到的最新值（受"PCR 延后"影响）。%B：0=布林下轨，1=上轨。相关性为当前日期范围内的 Spearman：①PCR 相对近期位置(%B)与之后 5/10/20 日收益；②PCR 的 5 日变化与同期 5 日收益。样本重叠、自相关很强，仅作线索。</div>` +
+    METALS.map(m => `<h2>${m.name} · 价格顶底位置的 PCR</h2><div class="tablewrap"><table id="pv_${m.key}"></table></div><h2>${m.name} · 相关性</h2><div class="tablewrap"><table id="cr_${m.key}"></table></div>`).join("");
+  fillTable("tblGold", PCRROWS, "gold"); fillTable("tblSilver", PCRROWS, "silver");
+  const last = PCRROWS[PCRROWS.length - 1];
+  const priceLast = VIEWS.length ? VIEWS[0].pDates[VIEWS[0].pDates.length - 1] : "–";
+  $("meta").innerHTML = `PCR 数据截至 <b>${last.date}</b> | 共 <b>${PCRROWS.length}</b> 个交易日 | 价格截至 <b>${priceLast}</b>`;
+  $("from").value = PCRROWS[0].date; $("to").value = priceLast;
+  if (VIEWS.length) { $("from").min = VIEWS[0].pDates[0]; $("to").max = priceLast; }
+  ["from", "to"].forEach(id => $(id).onchange = () => renderAll(true));
+  ["lag", "t1", "bbOn", "bbLen", "bbMult", "pivOn", "pivPct", "expOn", "ovOn", "minCv"].forEach(id => $(id).onchange = () => renderAll(false));
+  document.querySelectorAll('input[name="mode"]').forEach(r => r.onchange = () => renderAll(false));
+  $("rngPcr").onclick = () => { $("from").value = PCRROWS[0].date; $("to").value = priceLast; renderAll(true); };
+  $("rngAll").onclick = () => { if (VIEWS.length) $("from").value = VIEWS[0].pDates[0]; $("to").value = priceLast; renderAll(true); };
+  bindSync();
+  addEventListener("resize", () => VIEWS.forEach(v => [[v.cP, "cp_"], [v.cT, "ct_"], [v.cS, "cs_"]].forEach(([c, p]) => c.applyOptions({ width: $(p + v.m.key).clientWidth }))));
+  renderAll(true);
 }
-init();
+boot();
 </script>
 
 <script>
-// ===== 按到期期限拆分 =====
-(async function () {
-  const $ = id => document.getElementById(id);
-  const BK = [
-    { k: "r", name: "近期合计", color: "#eceff1", w: 3 },
-    { k: "w", name: "周度",   color: "#ab47bc" },
-    { k: "s", name: "短期",   color: "#ff9800" },
-    { k: "m", name: "中期",   color: "#26c6da" },
-    { k: "l", name: "长期",   color: "#66bb6a" },
-  ];
-  // 各期限线的显示/隐藏开关（记住上次选择；默认隐藏周度，因为它波动很大）
-  let VIS = { r: true, w: false, s: true, m: true, l: true };
-  try { Object.assign(VIS, JSON.parse(localStorage.getItem("pcrVis") || "{}")); } catch (e) {}
-  const legendEl = $("legendX");
-  legendEl.innerHTML = BK.map(b =>
-    `<label class="lg tg"><input type="checkbox" data-k="${b.k}" ${VIS[b.k] ? "checked" : ""}><i style="background:${b.color};height:${b.w ? 4 : 3}px"></i>${b.name}</label>`
-  ).join("") + `<button type="button" id="visAll" class="tgbtn">全部显示</button><button type="button" id="visOnly" class="tgbtn">仅近期合计</button>`;
+// ───────────────────────── 按到期期限拆分（展开时才创建图表） ─────────────────────────
+(function () {
+  let inited = false;
+  $("dtSplit").addEventListener("toggle", () => { if ($("dtSplit").open && !inited) { inited = true; initSplit(); } });
 
-  async function loadAny(rel) {
-    const urls = [rel];
-    const host = location.hostname;
-    if (host.endsWith(".github.io")) {
-      const user = host.split(".")[0], repo = location.pathname.split("/")[1];
-      if (repo) urls.push(`https://raw.githubusercontent.com/${user}/${repo}/main/${rel}`);
+  async function initSplit() {
+    const BK = [
+      { k: "r", name: "近期合计", color: "#eceff1", w: 3 },
+      { k: "w", name: "周度",   color: "#ab47bc" },
+      { k: "s", name: "短期",   color: "#ff9800" },
+      { k: "m", name: "中期",   color: "#26c6da" },
+      { k: "l", name: "长期",   color: "#66bb6a" },
+    ];
+    // 各期限线的显示/隐藏开关（记住上次选择；默认隐藏周度，因为它波动很大）
+    let VIS = { r: true, w: false, s: true, m: true, l: true };
+    try { Object.assign(VIS, JSON.parse(localStorage.getItem("pcrVis") || "{}")); } catch (e) {}
+    const legendEl = $("legendX");
+    legendEl.innerHTML = BK.map(b =>
+      `<label class="lg tg"><input type="checkbox" data-k="${b.k}" ${VIS[b.k] ? "checked" : ""}><i style="background:${b.color};height:${b.w ? 4 : 3}px"></i>${b.name}</label>`
+    ).join("") + `<button type="button" id="visAll" class="tgbtn">全部显示</button><button type="button" id="visOnly" class="tgbtn">仅近期合计</button>`;
+
+    const rows = EXP;
+    if (!rows.length) { $("metaX").textContent = "按到期拆分数据为空"; return; }
+    const dates = [...new Set(rows.map(r => r.date))].sort();
+    $("metaX").innerHTML = `拆分数据 <b>${dates[0]}</b> 至 <b>${dates[dates.length - 1]}</b> | 共 <b>${dates.length}</b> 个交易日`;
+
+    function mk(el) {
+      const c = LightweightCharts.createChart(el, {
+        width: el.clientWidth, height: 260,
+        layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
+        grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
+        rightPriceScale: { borderColor: "#2a2e39" }, timeScale: { borderColor: "#2a2e39" },
+      });
+      const lines = {};
+      BK.forEach(b => { lines[b.k] = c.addLineSeries({ color: b.color, lineWidth: b.w || 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }); });
+      const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
+      return { el, chart: c, lines, up: c.addLineSeries({ ...bbOpt }), lo: c.addLineSeries({ ...bbOpt }), mid: c.addLineSeries({ ...bbOpt, color: "#868993", lineStyle: 2 }) };
     }
-    for (const u of urls) {
-      try { const r = await fetch(u, { cache: "no-cache" }); if (r.ok) return await r.text(); } catch (e) {}
-    }
-    throw new Error("无法加载 " + rel);
-  }
+    const P = { goldOI: mk($("xGoldOI")), silverOI: mk($("xSilverOI")), goldVol: mk($("xGoldVol")), silverVol: mk($("xSilverVol")) };
 
-  function parseExpiry(text) {
-    const lines = text.trim().split(/\r?\n/).filter(Boolean);
-    const head = lines[0].split(",").map(s => s.trim());
-    const ix = n => head.indexOf(n);
-    return lines.slice(1).map(l => {
-      const c = l.split(",");
-      const g = n => (c[ix(n)] || "").trim();
-      return { date: g("date"), metal: g("metal"), kind: g("kind"), month: g("month"), expiry: g("expiry"),
-               cv: +g("call_vol") || 0, pv: +g("put_vol") || 0, co: +g("call_oi") || 0, po: +g("put_oi") || 0 };
-    }).filter(r => r.date);
-  }
-
-  let rows;
-  try { rows = parseExpiry(await loadAny("data/by_expiry.csv")); }
-  catch (e) { $("metaX").textContent = "按到期拆分数据加载失败：" + e.message; return; }
-  if (!rows.length) { $("metaX").textContent = "按到期拆分数据为空"; return; }
-  const dates = [...new Set(rows.map(r => r.date))].sort();
-  $("metaX").innerHTML = `拆分数据 <b>${dates[0]}</b> 至 <b>${dates[dates.length - 1]}</b> | 共 <b>${dates.length}</b> 个交易日`;
-
-  const PF = { type: "price", precision: 4, minMove: 0.0001 };
-  function mk(el) {
-    const c = LightweightCharts.createChart(el, {
-      width: el.clientWidth, height: 260,
-      layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
-      grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
-      rightPriceScale: { borderColor: "#2a2e39" }, timeScale: { borderColor: "#2a2e39" },
-    });
-    const lines = {};
-    BK.forEach(b => { lines[b.k] = c.addLineSeries({ color: b.color, lineWidth: b.w || 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }); });
-    const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
-    return { el, chart: c, lines, up: c.addLineSeries({ ...bbOpt }), lo: c.addLineSeries({ ...bbOpt }), mid: c.addLineSeries({ ...bbOpt, color: "#868993", lineStyle: 2 }) };
-  }
-  const P = {
-    goldOI: mk($("xGoldOI")), silverOI: mk($("xSilverOI")),
-    goldVol: mk($("xGoldVol")), silverVol: mk($("xSilverVol")),
-  };
-
-  function aggregate(metal, t1, t2, tR) {
-    const byDate = new Map();
-    for (const r of rows) {
-      if (r.metal !== metal) continue;
-      let k, near;
-      if (r.kind === "weekly") { k = "w"; near = true; }
-      else {
-        const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
-        k = dte <= t1 ? "s" : dte <= t2 ? "m" : "l";
-        near = dte <= tR;
+    function aggregate(metal, t1, t2, tR) {
+      const byDate = new Map();
+      for (const r of rows) {
+        if (r.metal !== metal) continue;
+        let k, near;
+        if (r.kind === "weekly") { k = "w"; near = true; }
+        else { const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5; k = dte <= t1 ? "s" : dte <= t2 ? "m" : "l"; near = dte <= tR; }
+        let d = byDate.get(r.date); if (!d) byDate.set(r.date, d = {});
+        for (const key of near ? [k, "r"] : [k]) { const b = d[key] || (d[key] = { cv: 0, pv: 0, co: 0, po: 0 }); b.cv += r.cv; b.pv += r.pv; b.co += r.co; b.po += r.po; }
       }
-      let d = byDate.get(r.date); if (!d) byDate.set(r.date, d = {});
-      for (const key of near ? [k, "r"] : [k]) {
-        const b = d[key] || (d[key] = { cv: 0, pv: 0, co: 0, po: 0 });
-        b.cv += r.cv; b.pv += r.pv; b.co += r.co; b.po += r.po;
+      return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    }
+    function bb(points, len, mult) {
+      const up = [], lo = [], mid = [];
+      for (let i = len - 1; i < points.length; i++) {
+        const w = points.slice(i - len + 1, i + 1).map(p => p.value); const m = w.reduce((a, b) => a + b, 0) / len;
+        const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len); const t = points[i].time;
+        mid.push({ time: t, value: m }); up.push({ time: t, value: m + mult * sd }); lo.push({ time: t, value: m - mult * sd });
       }
+      return { up, lo, mid };
     }
-    return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  }
-
-  function bb(points, len, mult) {
-    const up = [], lo = [], mid = [];
-    for (let i = len - 1; i < points.length; i++) {
-      const w = points.slice(i - len + 1, i + 1).map(p => p.value);
-      const m = w.reduce((a, b) => a + b, 0) / len;
-      const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len);
-      const t = points[i].time;
-      mid.push({ time: t, value: m }); up.push({ time: t, value: m + mult * sd }); lo.push({ time: t, value: m - mult * sd });
+    function table(id, agg) {
+      const last = agg[agg.length - 1];
+      const head = "<thead><tr><th>期限</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
+      if (!last) { $(id).innerHTML = head; return; }
+      const body = BK.map(b => {
+        const x = last[1][b.k];
+        if (!x) return `<tr><td>${b.name}</td><td colspan="6" style="text-align:center;color:var(--dim)">无</td></tr>`;
+        const v = x.cv ? (x.pv / x.cv).toFixed(4) : "–", o = x.co ? (x.po / x.co).toFixed(4) : "–";
+        return `<tr><td>${b.name}</td><td>${fmt(x.cv)}</td><td>${fmt(x.pv)}</td><td>${v}</td><td>${fmt(x.co)}</td><td>${fmt(x.po)}</td><td>${o}</td></tr>`;
+      }).join("");
+      $(id).innerHTML = head + "<tbody>" + body + `</tbody><caption style="caption-side:top;text-align:left;color:var(--dim);padding:4px 0">${last[0]}</caption>`;
     }
-    return { up, lo, mid };
-  }
-
-  const fmt = n => n.toLocaleString("en-US");
-  function table(id, agg) {
-    const last = agg[agg.length - 1];
-    const head = "<thead><tr><th>期限</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
-    if (!last) { $(id).innerHTML = head; return; }
-    const body = BK.map(b => {
-      const x = last[1][b.k];
-      if (!x) return `<tr><td>${b.name}</td><td colspan="6" style="text-align:center;color:var(--dim)">无</td></tr>`;
-      const v = x.cv ? (x.pv / x.cv).toFixed(4) : "–", o = x.co ? (x.po / x.co).toFixed(4) : "–";
-      return `<tr><td>${b.name}</td><td>${fmt(x.cv)}</td><td>${fmt(x.pv)}</td><td>${v}</td><td>${fmt(x.co)}</td><td>${fmt(x.po)}</td><td>${o}</td></tr>`;
-    }).join("");
-    $(id).innerHTML = head + "<tbody>" + body + `</tbody><caption style="caption-side:top;text-align:left;color:var(--dim);padding:4px 0">${last[0]}</caption>`;
-  }
-
-  function render() {
-    const t1 = Math.max(1, +$("t1").value || 30), t2 = Math.max(t1 + 1, +$("t2").value || 90), tR = Math.max(2, +$("tR").value || 90);
-    const minCv = Math.max(0, +$("minCv").value || 0);
-    const on = $("bbOnX").checked, sel = $("bbBucket").value;
-    const len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
-    for (const [metal, oiId, volId] of [["gold", "goldOI", "goldVol"], ["silver", "silverOI", "silverVol"]]) {
-      const agg = aggregate(metal, t1, t2, tR);
-      for (const [pid, key] of [[oiId, "oi"], [volId, "vol"]]) {
-        const panel = P[pid];
-        const per = {};
-        BK.forEach(b => {
-          const pts = [];
-          for (const [d, o] of agg) {
-            const x = o[b.k]; if (!x) continue;
-            if (key === "oi") { if (x.co > 0) pts.push({ time: d, value: x.po / x.co }); }
-            else if (x.cv > 0 && x.cv >= minCv) pts.push({ time: d, value: x.pv / x.cv });
-          }
-          per[b.k] = pts; panel.lines[b.k].setData(pts);
-        });
-        BK.forEach(b => panel.lines[b.k].applyOptions({ visible: !!VIS[b.k] }));
-        // 布林带对象被隐藏时，自动改画在第一条可见的线上
-        const bbk = VIS[sel] ? sel : ["r", "s", "m", "l", "w"].find(k => VIS[k]);
-        const pts = (bbk && per[bbk]) || [];
-        if (on && bbk && pts.length >= len) { const r = bb(pts, len, mult); panel.up.setData(r.up); panel.lo.setData(r.lo); panel.mid.setData(r.mid); }
-        else { panel.up.setData([]); panel.lo.setData([]); panel.mid.setData([]); }
+    function render() {
+      const t1 = Math.max(1, +$("t1").value || 30), t2 = Math.max(t1 + 1, +$("t2").value || 90), tR = Math.max(2, +$("tR").value || 90);
+      const minCv = Math.max(0, +$("minCv").value || 0);
+      const on = $("bbOnX").checked, sel = $("bbBucket").value;
+      const len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
+      for (const [metal, oiId, volId] of [["gold", "goldOI", "goldVol"], ["silver", "silverOI", "silverVol"]]) {
+        const agg = aggregate(metal, t1, t2, tR);
+        for (const [pid, key] of [[oiId, "oi"], [volId, "vol"]]) {
+          const panel = P[pid], per = {};
+          BK.forEach(b => {
+            const pts = [];
+            for (const [d, o] of agg) { const x = o[b.k]; if (!x) continue;
+              if (key === "oi") { if (x.co > 0) pts.push({ time: d, value: x.po / x.co }); } else if (x.cv > 0 && x.cv >= minCv) pts.push({ time: d, value: x.pv / x.cv }); }
+            per[b.k] = pts; panel.lines[b.k].setData(pts);
+          });
+          BK.forEach(b => panel.lines[b.k].applyOptions({ visible: !!VIS[b.k] }));
+          const bbk = VIS[sel] ? sel : ["r", "s", "m", "l", "w"].find(k => VIS[k]);   // 布林带对象被隐藏时自动改画在第一条可见的线上
+          const pts = (bbk && per[bbk]) || [];
+          if (on && bbk && pts.length >= len) { const r = bb(pts, len, mult); panel.up.setData(r.up); panel.lo.setData(r.lo); panel.mid.setData(r.mid); }
+          else { panel.up.setData([]); panel.lo.setData([]); panel.mid.setData([]); }
+        }
+        table(metal === "gold" ? "tblXGold" : "tblXSilver", agg);
       }
-      table(metal === "gold" ? "tblXGold" : "tblXSilver", agg);
+      if (!render.done) { render.done = true; Object.values(P).forEach(p => p.chart.timeScale().setVisibleRange({ from: dates[0], to: dates[dates.length - 1] })); }
     }
-    if (!render.done) {            // 只在首次加载时铺满全部日期；之后切换开关不重置你的缩放
-      render.done = true;
-      Object.values(P).forEach(p => p.chart.timeScale().setVisibleRange({ from: dates[0], to: dates[dates.length - 1] }));
-    }
+    window.splitRender = render;
+    ["t2", "tR", "minCv", "bbBucket", "bbOnX"].forEach(id => { $(id).addEventListener("change", render); });
+    const saveVis = () => { try { localStorage.setItem("pcrVis", JSON.stringify(VIS)); } catch (e) {} };
+    const syncBoxes = () => legendEl.querySelectorAll("input[data-k]").forEach(i => { i.checked = !!VIS[i.dataset.k]; });
+    legendEl.querySelectorAll("input[data-k]").forEach(i => { i.onchange = () => { VIS[i.dataset.k] = i.checked; saveVis(); render(); }; });
+    $("visAll").onclick = () => { BK.forEach(b => VIS[b.k] = true); saveVis(); syncBoxes(); render(); };
+    $("visOnly").onclick = () => { BK.forEach(b => VIS[b.k] = (b.k === "r")); saveVis(); syncBoxes(); render(); };
+    render();
+
+    const charts = Object.values(P).map(p => p.chart);
+    let syncing = false;
+    charts.forEach((c, i) => c.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (syncing || !r) return; syncing = true;
+      charts.forEach((o, j) => { if (j !== i) o.timeScale().setVisibleLogicalRange(r); });
+      syncing = false;
+    }));
+    addEventListener("resize", () => Object.values(P).forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
   }
-
-  ["t1", "t2", "tR", "minCv", "bbBucket", "bbOnX", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
-  const saveVis = () => { try { localStorage.setItem("pcrVis", JSON.stringify(VIS)); } catch (e) {} };
-  const syncBoxes = () => legendEl.querySelectorAll("input[data-k]").forEach(i => { i.checked = !!VIS[i.dataset.k]; });
-  legendEl.querySelectorAll("input[data-k]").forEach(i => { i.onchange = () => { VIS[i.dataset.k] = i.checked; saveVis(); render(); }; });
-  $("visAll").onclick = () => { BK.forEach(b => VIS[b.k] = true); saveVis(); syncBoxes(); render(); };
-  $("visOnly").onclick = () => { BK.forEach(b => VIS[b.k] = (b.k === "r")); saveVis(); syncBoxes(); render(); };
-  render();
-
-  const charts = Object.values(P).map(p => p.chart);
-  let syncing = false;
-  charts.forEach((c, i) => c.timeScale().subscribeVisibleLogicalRangeChange(r => {
-    if (syncing || !r) return; syncing = true;
-    charts.forEach((o, j) => { if (j !== i) o.timeScale().setVisibleLogicalRange(r); });
-    syncing = false;
-  }));
-  addEventListener("resize", () => Object.values(P).forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
 })();
 </script>
 </body>
