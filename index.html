@@ -22,6 +22,10 @@
   .controls select { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
   .lg { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
   .lg i { width:12px; height:3px; display:inline-block; }
+  .tg { cursor:pointer; user-select:none; padding:3px 8px; border:1px solid var(--line); border-radius:4px; background:var(--panel); }
+  .tg input { margin:0; }
+  .tgbtn { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:3px 10px; cursor:pointer; font:inherit; font-size:13px; }
+  .tgbtn:hover, .tg:hover { border-color:#4c9aff; }
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
   .grid section { min-width:0; }
   @media (max-width: 800px) { .grid { grid-template-columns:1fr; } }
@@ -87,7 +91,6 @@
       </select>
     </label>
     <label><input type="checkbox" id="bbOnX" checked> 显示布林带（周期、倍数同上）</label>
-    <label><input type="checkbox" id="showW"> 显示周度线（波动很大，默认隐藏）</label>
   </div>
   <div id="legendX" style="margin:8px 0 0; display:flex; gap:16px; flex-wrap:wrap"></div>
   <div class="grid" id="gridX">
@@ -308,7 +311,13 @@ init();
     { k: "m", name: "中期",   color: "#26c6da" },
     { k: "l", name: "长期",   color: "#66bb6a" },
   ];
-  $("legendX").innerHTML = BK.map(b => `<span class="lg"><i style="background:${b.color}"></i>${b.name}</span>`).join("");
+  // 各期限线的显示/隐藏开关（记住上次选择；默认隐藏周度，因为它波动很大）
+  let VIS = { r: true, w: false, s: true, m: true, l: true };
+  try { Object.assign(VIS, JSON.parse(localStorage.getItem("pcrVis") || "{}")); } catch (e) {}
+  const legendEl = $("legendX");
+  legendEl.innerHTML = BK.map(b =>
+    `<label class="lg tg"><input type="checkbox" data-k="${b.k}" ${VIS[b.k] ? "checked" : ""}><i style="background:${b.color};height:${b.w ? 4 : 3}px"></i>${b.name}</label>`
+  ).join("") + `<button type="button" id="visAll" class="tgbtn">全部显示</button><button type="button" id="visOnly" class="tgbtn">仅近期合计</button>`;
 
   async function loadAny(rel) {
     const urls = [rel];
@@ -425,16 +434,27 @@ init();
           }
           per[b.k] = pts; panel.lines[b.k].setData(pts);
         });
-        const pts = per[sel] || [];
-        if (on && pts.length >= len) { const r = bb(pts, len, mult); panel.up.setData(r.up); panel.lo.setData(r.lo); panel.mid.setData(r.mid); }
+        BK.forEach(b => panel.lines[b.k].applyOptions({ visible: !!VIS[b.k] }));
+        // 布林带对象被隐藏时，自动改画在第一条可见的线上
+        const bbk = VIS[sel] ? sel : ["r", "s", "m", "l", "w"].find(k => VIS[k]);
+        const pts = (bbk && per[bbk]) || [];
+        if (on && bbk && pts.length >= len) { const r = bb(pts, len, mult); panel.up.setData(r.up); panel.lo.setData(r.lo); panel.mid.setData(r.mid); }
         else { panel.up.setData([]); panel.lo.setData([]); panel.mid.setData([]); }
       }
       table(metal === "gold" ? "tblXGold" : "tblXSilver", agg);
     }
-    Object.values(P).forEach(p => { p.lines.w.applyOptions({ visible: $("showW").checked }); p.chart.timeScale().fitContent(); });
+    if (!render.done) {            // 只在首次加载时铺满全部日期；之后切换开关不重置你的缩放
+      render.done = true;
+      Object.values(P).forEach(p => p.chart.timeScale().setVisibleRange({ from: dates[0], to: dates[dates.length - 1] }));
+    }
   }
 
-  ["t1", "t2", "tR", "minCv", "bbBucket", "bbOnX", "showW", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
+  ["t1", "t2", "tR", "minCv", "bbBucket", "bbOnX", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
+  const saveVis = () => { try { localStorage.setItem("pcrVis", JSON.stringify(VIS)); } catch (e) {} };
+  const syncBoxes = () => legendEl.querySelectorAll("input[data-k]").forEach(i => { i.checked = !!VIS[i.dataset.k]; });
+  legendEl.querySelectorAll("input[data-k]").forEach(i => { i.onchange = () => { VIS[i.dataset.k] = i.checked; saveVis(); render(); }; });
+  $("visAll").onclick = () => { BK.forEach(b => VIS[b.k] = true); saveVis(); syncBoxes(); render(); };
+  $("visOnly").onclick = () => { BK.forEach(b => VIS[b.k] = (b.k === "r")); saveVis(); syncBoxes(); render(); };
   render();
 
   const charts = Object.values(P).map(p => p.chart);
