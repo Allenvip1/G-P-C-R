@@ -2,8 +2,8 @@ name: update-pcr
 
 on:
   schedule:
-    # CME 日报在美国中部时间午夜后发布（约 UTC 06:00），这里取 UTC 07:30，周二至周六
-    - cron: "30 7 * * 2-6"
+    - cron: "15 6 * * 1-5"    # 北京时间 14:15，抓初步版
+    - cron: "15 16 * * 1-5"   # 北京时间次日 00:15，抓最终版并覆盖
   workflow_dispatch:
 
 jobs:
