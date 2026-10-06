@@ -76,6 +76,12 @@
     <button type="button" id="rngPcr">PCR 数据范围</button>
     <button type="button" id="rngAll">全部价格历史</button>
     <span class="sep"></span>
+    <button type="button" id="panL" title="向左平移，看更早的日期（键盘 ←；Shift+← 移一根）">◀ 更早</button>
+    <button type="button" id="panR" title="向右平移，看更新的日期（键盘 →；Shift+→ 移一根）">更新 ▶</button>
+    <button type="button" id="panN" title="回到最新一天（键盘 End）">最新 ⏭</button>
+    <button type="button" id="zmIn" title="放大（少看几天）">＋</button>
+    <button type="button" id="zmOut" title="缩小（多看几天）">－</button>
+    <span class="sep"></span>
     <label title="日报在下一个交易日凌晨才发布，所以 PCR 应该延后 1 个交易日显示才没有未来函数。想看领先/滞后关系可以改这个数。">PCR 延后 <input type="number" id="lag" value="1" min="-10" max="20"> 日</label>
     <label title="短期 PCR 只统计标准月度期权中距到期不超过这个天数的合约（不含周度）">短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
     <span class="sep"></span>
@@ -337,9 +343,9 @@ function makeView(m) {
   v.expDots = v.cS.addLineSeries({ color: "#ffd180", lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 4, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, priceFormat: PF });
   const ov = c => v.cP.addLineSeries({ color: c, lineWidth: 2, priceScaleId: "left", priceFormat: PF, visible: false, lastValueVisible: false, priceLineVisible: false });
   v.ovT = ov("#ffb300"); v.ovS = ov("#29b6f6");
-  ALLCH.push({ metal: k, chart: v.cP, series: v.candle, get: t => { const r = v.priceByTime.get(t); return r ? r.close : null; } });
-  ALLCH.push({ metal: k, chart: v.cT, series: v.sT.line, get: t => { const r = known(v.PT, t); return r ? r.value : null; } });
-  ALLCH.push({ metal: k, chart: v.cS, series: v.sS.line, get: t => { const r = known(v.PS, t); return r ? r.value : null; } });
+  ALLCH.push({ metal: k, el: $("cp_" + k), chart: v.cP, series: v.candle, get: t => { const r = v.priceByTime.get(t); return r ? r.close : null; } });
+  ALLCH.push({ metal: k, el: $("ct_" + k), chart: v.cT, series: v.sT.line, get: t => { const r = known(v.PT, t); return r ? r.value : null; } });
+  ALLCH.push({ metal: k, el: $("cs_" + k), chart: v.cS, series: v.sS.line, get: t => { const r = known(v.PS, t); return r ? r.value : null; } });
   return v;
 }
 
@@ -403,18 +409,29 @@ function updateLegends(t0, onlyMetal) {
       `<span style="color:var(--dim)">（PCR 数据日：${a ? a.date : "–"} / ${b ? b.date : "–"}）</span>`;
   });
 }
-let syncT = false, syncC = false;
+let syncC = false, ACTIVE = null;
 function groupOf(entry) { return ALLCH.filter(e => e.metal === entry.metal); }   // 只在同一品种的三张图之间联动
 function applyRange() {
   const r = { from: $("from").value, to: $("to").value };
-  syncT = true; ALLCH.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (err) { e.chart.timeScale().fitContent(); } }); syncT = false;
+  ACTIVE = null;
+  ALLCH.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (err) { e.chart.timeScale().fitContent(); } });
+}
+// ── 平移 / 缩放（按钮 + 键盘）：对每个品种，以它的价格图的当前范围为基准，统一设置三张图 ──
+function logicalOf(k) { const e = ALLCH.find(x => x.metal === k); return e ? e.chart.timeScale().getVisibleLogicalRange() : null; }
+function setGroup(k, from, to) { ACTIVE = null; ALLCH.filter(e => e.metal === k).forEach(e => e.chart.timeScale().setVisibleLogicalRange({ from, to })); }
+function panBars(dir, one) {      // dir=-1 更早，+1 更新；one=true 只移一根
+  METALS.forEach(m => { const r = logicalOf(m.key); if (!r) return; const w = r.to - r.from, step = one ? 1 : Math.max(2, Math.round(w / 4)); setGroup(m.key, r.from + dir * step, r.to + dir * step); });
+}
+function panLatest() { ACTIVE = null; ALLCH.forEach(e => e.chart.timeScale().scrollToPosition(3, false)); }
+function zoomBy(f) {              // f<1 放大，f>1 缩小；以最右边的日期为锚点
+  METALS.forEach(m => { const r = logicalOf(m.key); if (!r) return; const w = Math.max(8, (r.to - r.from) * f); setGroup(m.key, r.to - w, r.to); });
 }
 function bindSync() {
   ALLCH.forEach(entry => {
-    entry.chart.timeScale().subscribeVisibleTimeRangeChange(r => {
-      if (syncT || !r) return; syncT = true;
-      groupOf(entry).forEach(o => { if (o !== entry) { try { o.chart.timeScale().setVisibleRange(r); } catch (e) {} } });
-      syncT = false;
+    ["mouseenter", "mousedown", "touchstart", "wheel"].forEach(ev => entry.el.addEventListener(ev, () => { ACTIVE = entry; }, { passive: true }));
+    entry.chart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (!r || ACTIVE !== entry) return;     // 只有正在被你操作的这张图才带动其余的图，避免回声把它拉回去
+      groupOf(entry).forEach(o => { if (o !== entry) o.chart.timeScale().setVisibleLogicalRange(r); });
     });
     entry.chart.subscribeCrosshairMove(param => {
       if (syncC) return;
@@ -428,6 +445,16 @@ function bindSync() {
       });
       syncC = false;
     });
+  });
+  $("panL").onclick = () => panBars(-1, false); $("panR").onclick = () => panBars(1, false);
+  $("panN").onclick = panLatest; $("zmIn").onclick = () => zoomBy(0.7); $("zmOut").onclick = () => zoomBy(1 / 0.7);
+  document.addEventListener("keydown", e => {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); panBars(-1, e.shiftKey); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); panBars(1, e.shiftKey); }
+    else if (e.key === "End") { e.preventDefault(); panLatest(); }
+    else if (e.key === "+" || e.key === "=") zoomBy(0.7);
+    else if (e.key === "-") zoomBy(1 / 0.7);
   });
 }
 function renderAll(resetRange) {
