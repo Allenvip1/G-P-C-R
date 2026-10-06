@@ -77,22 +77,24 @@
   <div id="metaX">加载中…</div>
   <div class="controls">
     <label>短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
-    <label>中期 ≤ <input type="number" id="t2" value="120" min="2" max="800"> 天（更远为长期）</label>
+    <label>中期 ≤ <input type="number" id="t2" value="90" min="2" max="800"> 天（更远为长期）</label>
+    <label>近期合计 ≤ <input type="number" id="tR" value="90" min="2" max="800"> 天（含周度）</label>
     <label>成交量 PCR 最小看涨成交量 <input type="number" id="minCv" value="20" min="0" max="100000"></label>
     <label>布林带对象
       <select id="bbBucket">
-        <option value="w">周度</option><option value="s" selected>短期</option>
+        <option value="r" selected>近期合计</option><option value="w">周度</option><option value="s">短期</option>
         <option value="m">中期</option><option value="l">长期</option>
       </select>
     </label>
     <label><input type="checkbox" id="bbOnX" checked> 显示布林带（周期、倍数同上）</label>
+    <label><input type="checkbox" id="showW"> 显示周度线（波动很大，默认隐藏）</label>
   </div>
   <div id="legendX" style="margin:8px 0 0; display:flex; gap:16px; flex-wrap:wrap"></div>
   <div class="grid" id="gridX">
-    <section><h2>黄金 · 持仓量 PCR（按期限）</h2><div id="xGoldOI" class="chart"></div></section>
-    <section><h2>白银 · 持仓量 PCR（按期限）</h2><div id="xSilverOI" class="chart"></div></section>
-    <section><h2>黄金 · 成交量 PCR（按期限）</h2><div id="xGoldVol" class="chart"></div></section>
-    <section><h2>白银 · 成交量 PCR（按期限）</h2><div id="xSilverVol" class="chart"></div></section>
+    <section><h2>黄金 · 持仓量 PCR（按期限，主）</h2><div id="xGoldOI" class="chart"></div></section>
+    <section><h2>白银 · 持仓量 PCR（按期限，主）</h2><div id="xSilverOI" class="chart"></div></section>
+    <section><h2>黄金 · 成交量 PCR（按期限，参考）</h2><div id="xGoldVol" class="chart"></div></section>
+    <section><h2>白银 · 成交量 PCR（按期限，参考）</h2><div id="xSilverVol" class="chart"></div></section>
   </div>
   <h2>黄金 · 最新一天各期限明细</h2>
   <div class="tablewrap"><table id="tblXGold"></table></div>
@@ -102,6 +104,7 @@
     按到期期限拆分的数据来自 CME 日报 PG64（金属期权明细）。周度仅含周五周度期权（OG1–OG4、SO1–SO4）；周一至周四周度和微型期权的看涨看跌在 PDF 里混排，无法区分，未计入。
     月度期权按到期日距公报日的天数分为短期、中期、长期，阈值可在上方修改。月度部分合计与上面的 PG02B 汇总一致，周度不在汇总里。
     拆分数据从 2026-03-23 开始。
+    「近期合计」= 周度 + 距到期 ≤90 天的月度期权合计，在对照一位博主的 PCR 曲线时，持仓量口径下的这一项相关性最高（约 0.72）；成交量口径的相关性很低，仅供参考。
   </p>
 
   <p class="note">
@@ -299,6 +302,7 @@ init();
 (async function () {
   const $ = id => document.getElementById(id);
   const BK = [
+    { k: "r", name: "近期合计", color: "#eceff1", w: 3 },
     { k: "w", name: "周度",   color: "#ab47bc" },
     { k: "s", name: "短期",   color: "#ff9800" },
     { k: "m", name: "中期",   color: "#26c6da" },
@@ -347,7 +351,7 @@ init();
       rightPriceScale: { borderColor: "#2a2e39" }, timeScale: { borderColor: "#2a2e39" },
     });
     const lines = {};
-    BK.forEach(b => { lines[b.k] = c.addLineSeries({ color: b.color, lineWidth: 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }); });
+    BK.forEach(b => { lines[b.k] = c.addLineSeries({ color: b.color, lineWidth: b.w || 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }); });
     const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
     return { el, chart: c, lines, up: c.addLineSeries({ ...bbOpt }), lo: c.addLineSeries({ ...bbOpt }), mid: c.addLineSeries({ ...bbOpt, color: "#868993", lineStyle: 2 }) };
   }
@@ -356,19 +360,22 @@ init();
     goldVol: mk($("xGoldVol")), silverVol: mk($("xSilverVol")),
   };
 
-  function aggregate(metal, t1, t2) {
+  function aggregate(metal, t1, t2, tR) {
     const byDate = new Map();
     for (const r of rows) {
       if (r.metal !== metal) continue;
-      let k;
-      if (r.kind === "weekly") k = "w";
+      let k, near;
+      if (r.kind === "weekly") { k = "w"; near = true; }
       else {
         const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
         k = dte <= t1 ? "s" : dte <= t2 ? "m" : "l";
+        near = dte <= tR;
       }
       let d = byDate.get(r.date); if (!d) byDate.set(r.date, d = {});
-      const b = d[k] || (d[k] = { cv: 0, pv: 0, co: 0, po: 0 });
-      b.cv += r.cv; b.pv += r.pv; b.co += r.co; b.po += r.po;
+      for (const key of near ? [k, "r"] : [k]) {
+        const b = d[key] || (d[key] = { cv: 0, pv: 0, co: 0, po: 0 });
+        b.cv += r.cv; b.pv += r.pv; b.co += r.co; b.po += r.po;
+      }
     }
     return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
   }
@@ -400,12 +407,12 @@ init();
   }
 
   function render() {
-    const t1 = Math.max(1, +$("t1").value || 30), t2 = Math.max(t1 + 1, +$("t2").value || 120);
+    const t1 = Math.max(1, +$("t1").value || 30), t2 = Math.max(t1 + 1, +$("t2").value || 90), tR = Math.max(2, +$("tR").value || 90);
     const minCv = Math.max(0, +$("minCv").value || 0);
     const on = $("bbOnX").checked, sel = $("bbBucket").value;
     const len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
     for (const [metal, oiId, volId] of [["gold", "goldOI", "goldVol"], ["silver", "silverOI", "silverVol"]]) {
-      const agg = aggregate(metal, t1, t2);
+      const agg = aggregate(metal, t1, t2, tR);
       for (const [pid, key] of [[oiId, "oi"], [volId, "vol"]]) {
         const panel = P[pid];
         const per = {};
@@ -424,10 +431,10 @@ init();
       }
       table(metal === "gold" ? "tblXGold" : "tblXSilver", agg);
     }
-    Object.values(P).forEach(p => p.chart.timeScale().fitContent());
+    Object.values(P).forEach(p => { p.lines.w.applyOptions({ visible: $("showW").checked }); p.chart.timeScale().fitContent(); });
   }
 
-  ["t1", "t2", "minCv", "bbBucket", "bbOnX", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
+  ["t1", "t2", "tR", "minCv", "bbBucket", "bbOnX", "showW", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
   render();
 
   const charts = Object.values(P).map(p => p.chart);
