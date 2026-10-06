@@ -15,8 +15,13 @@ URL = (
     "https://www.cmegroup.com/daily_bulletin/current/"
     "Section02B_Summary_Volume_And_Open_Interest_Metals_Futures_And_Options.pdf"
 )
+URL_PG64 = (
+    "https://www.cmegroup.com/daily_bulletin/current/"
+    "Section64_Metals_Option_Products.pdf"
+)
 REFERER = "https://www.cmegroup.com/"
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "gold_pcr.csv"
+EXPIRY_CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "by_expiry.csv"
 
 HEADER = [
     "date",
@@ -177,6 +182,62 @@ def upsert(day: dt.date, counts, path: Path = CSV_PATH) -> None:
     write_rows(rows, path)
 
 
+def fetch_pg64_text() -> str:
+    """下载 PG64（金属期权明细）。失败时抛异常，由调用方决定是否忽略，不影响 PG02B 的更新。"""
+    import pdfplumber
+    from curl_cffi import requests
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": REFERER,
+    }
+    r = requests.get(URL_PG64, headers=headers, impersonate="chrome120", timeout=120)
+    r.raise_for_status()
+    if not r.content.startswith(b"%PDF"):
+        raise RuntimeError("PG64 返回的不是 PDF")
+    with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+        return chr(10).join(p.extract_text() or "" for p in pdf.pages)
+
+
+def upsert_expiry(rows: list, path: Path = EXPIRY_CSV_PATH) -> None:
+    """按日期整天替换 by_expiry.csv 里的行（同一天的初步版会被最终版覆盖）。"""
+    import pg64
+
+    existing = []
+    if path.exists():
+        with path.open(newline="", encoding="utf-8") as f:
+            existing = list(csv.DictReader(f))
+    days = {r["date"] for r in rows}
+    kept = [r for r in existing if r["date"] not in days]
+    merged = kept + [{k: r[k] for k in pg64.FIELDS} for r in rows]
+    merged.sort(key=lambda r: (r["date"], r["metal"], r["kind"], r["code"], r["month"]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=pg64.FIELDS)
+        w.writeheader()
+        w.writerows(merged)
+
+
+def update_by_expiry(pg02b_day: dt.date, pg02b_counts) -> None:
+    """抓取 PG64，按到期月拆分并写入 data/by_expiry.csv；任何失败只告警，不影响 PG02B。"""
+    try:
+        import pg64
+
+        text = fetch_pg64_text()
+        day, rows = pg64.extract(text)
+        if not rows:
+            raise ValueError("PG64 没解析出任何行")
+        tot = pg64.check_against_pg02b(rows)
+        g = tot.get("gold", [0, 0, 0, 0])
+        exp = [pg02b_counts[0], pg02b_counts[1], pg02b_counts[2], pg02b_counts[3]]
+        if day == pg02b_day and g != exp:
+            print(f"【警告】PG64 黄金月度合计 {g} 与 PG02B {exp} 不一致，仍写入但请留意。")
+        upsert_expiry(rows)
+        print(f"【成功】{day} 按到期月拆分已写入 {len(rows)} 行（黄金月度合计 {g}）")
+    except Exception as e:
+        print(f"【警告】按到期月拆分失败，已跳过（不影响 PG02B 数据）: {e}")
+
+
 def main() -> None:
     text = fetch_text()
     day = bulletin_date(text)
@@ -185,6 +246,7 @@ def main() -> None:
     counts = get_counts(text)
     upsert(day, counts)
     print(f"【成功】{day}（{tag}）黄金与白银数据已同步：{counts}")
+    update_by_expiry(day, counts)
 
 
 if __name__ == "__main__":

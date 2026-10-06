@@ -19,6 +19,9 @@
   .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
   .controls label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
   .controls input[type=number] { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; width:64px; }
+  .controls select { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+  .lg { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
+  .lg i { width:12px; height:3px; display:inline-block; }
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
   .grid section { min-width:0; }
   @media (max-width: 800px) { .grid { grid-template-columns:1fr; } }
@@ -69,6 +72,37 @@
   <div class="tablewrap"><table id="tblGold"></table></div>
   <h2>白银 · 最近数据（最新在前）</h2>
   <div class="tablewrap"><table id="tblSilver"></table></div>
+
+  <h1 style="margin-top:32px">按到期期限拆分 PCR</h1>
+  <div id="metaX">加载中…</div>
+  <div class="controls">
+    <label>短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
+    <label>中期 ≤ <input type="number" id="t2" value="120" min="2" max="800"> 天（更远为长期）</label>
+    <label>成交量 PCR 最小看涨成交量 <input type="number" id="minCv" value="20" min="0" max="100000"></label>
+    <label>布林带对象
+      <select id="bbBucket">
+        <option value="w">周度</option><option value="s" selected>短期</option>
+        <option value="m">中期</option><option value="l">长期</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="bbOnX" checked> 显示布林带（周期、倍数同上）</label>
+  </div>
+  <div id="legendX" style="margin:8px 0 0; display:flex; gap:16px; flex-wrap:wrap"></div>
+  <div class="grid" id="gridX">
+    <section><h2>黄金 · 持仓量 PCR（按期限）</h2><div id="xGoldOI" class="chart"></div></section>
+    <section><h2>白银 · 持仓量 PCR（按期限）</h2><div id="xSilverOI" class="chart"></div></section>
+    <section><h2>黄金 · 成交量 PCR（按期限）</h2><div id="xGoldVol" class="chart"></div></section>
+    <section><h2>白银 · 成交量 PCR（按期限）</h2><div id="xSilverVol" class="chart"></div></section>
+  </div>
+  <h2>黄金 · 最新一天各期限明细</h2>
+  <div class="tablewrap"><table id="tblXGold"></table></div>
+  <h2>白银 · 最新一天各期限明细</h2>
+  <div class="tablewrap"><table id="tblXSilver"></table></div>
+  <p class="note">
+    按到期期限拆分的数据来自 CME 日报 PG64（金属期权明细）。周度仅含周五周度期权（OG1–OG4、SO1–SO4）；周一至周四周度和微型期权的看涨看跌在 PDF 里混排，无法区分，未计入。
+    月度期权按到期日距公报日的天数分为短期、中期、长期，阈值可在上方修改。月度部分合计与上面的 PG02B 汇总一致，周度不在汇总里。
+    拆分数据从 2026-03-23 开始。
+  </p>
 
   <p class="note">
     数据来源：CME Group Daily Bulletin（PG02B）。黄金为 COMEX 黄金期权（OG），白银为 COMEX 白银期权（SO），均为全部到期月合计，不含周度期权。
@@ -258,6 +292,153 @@ async function init() {
   }
 }
 init();
+</script>
+
+<script>
+// ===== 按到期期限拆分 =====
+(async function () {
+  const $ = id => document.getElementById(id);
+  const BK = [
+    { k: "w", name: "周度",   color: "#ab47bc" },
+    { k: "s", name: "短期",   color: "#ff9800" },
+    { k: "m", name: "中期",   color: "#26c6da" },
+    { k: "l", name: "长期",   color: "#66bb6a" },
+  ];
+  $("legendX").innerHTML = BK.map(b => `<span class="lg"><i style="background:${b.color}"></i>${b.name}</span>`).join("");
+
+  async function loadAny(rel) {
+    const urls = [rel];
+    const host = location.hostname;
+    if (host.endsWith(".github.io")) {
+      const user = host.split(".")[0], repo = location.pathname.split("/")[1];
+      if (repo) urls.push(`https://raw.githubusercontent.com/${user}/${repo}/main/${rel}`);
+    }
+    for (const u of urls) {
+      try { const r = await fetch(u, { cache: "no-cache" }); if (r.ok) return await r.text(); } catch (e) {}
+    }
+    throw new Error("无法加载 " + rel);
+  }
+
+  function parseExpiry(text) {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    const head = lines[0].split(",").map(s => s.trim());
+    const ix = n => head.indexOf(n);
+    return lines.slice(1).map(l => {
+      const c = l.split(",");
+      const g = n => (c[ix(n)] || "").trim();
+      return { date: g("date"), metal: g("metal"), kind: g("kind"), month: g("month"), expiry: g("expiry"),
+               cv: +g("call_vol") || 0, pv: +g("put_vol") || 0, co: +g("call_oi") || 0, po: +g("put_oi") || 0 };
+    }).filter(r => r.date);
+  }
+
+  let rows;
+  try { rows = parseExpiry(await loadAny("data/by_expiry.csv")); }
+  catch (e) { $("metaX").textContent = "按到期拆分数据加载失败：" + e.message; return; }
+  if (!rows.length) { $("metaX").textContent = "按到期拆分数据为空"; return; }
+  const dates = [...new Set(rows.map(r => r.date))].sort();
+  $("metaX").innerHTML = `拆分数据 <b>${dates[0]}</b> 至 <b>${dates[dates.length - 1]}</b> | 共 <b>${dates.length}</b> 个交易日`;
+
+  const PF = { type: "price", precision: 4, minMove: 0.0001 };
+  function mk(el) {
+    const c = LightweightCharts.createChart(el, {
+      width: el.clientWidth, height: 260,
+      layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
+      grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
+      rightPriceScale: { borderColor: "#2a2e39" }, timeScale: { borderColor: "#2a2e39" },
+    });
+    const lines = {};
+    BK.forEach(b => { lines[b.k] = c.addLineSeries({ color: b.color, lineWidth: 2, priceFormat: PF, lastValueVisible: true, priceLineVisible: false }); });
+    const bbOpt = { color: "#2962ff", lineWidth: 1, priceFormat: PF, lastValueVisible: false, priceLineVisible: false };
+    return { el, chart: c, lines, up: c.addLineSeries({ ...bbOpt }), lo: c.addLineSeries({ ...bbOpt }), mid: c.addLineSeries({ ...bbOpt, color: "#868993", lineStyle: 2 }) };
+  }
+  const P = {
+    goldOI: mk($("xGoldOI")), silverOI: mk($("xSilverOI")),
+    goldVol: mk($("xGoldVol")), silverVol: mk($("xSilverVol")),
+  };
+
+  function aggregate(metal, t1, t2) {
+    const byDate = new Map();
+    for (const r of rows) {
+      if (r.metal !== metal) continue;
+      let k;
+      if (r.kind === "weekly") k = "w";
+      else {
+        const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
+        k = dte <= t1 ? "s" : dte <= t2 ? "m" : "l";
+      }
+      let d = byDate.get(r.date); if (!d) byDate.set(r.date, d = {});
+      const b = d[k] || (d[k] = { cv: 0, pv: 0, co: 0, po: 0 });
+      b.cv += r.cv; b.pv += r.pv; b.co += r.co; b.po += r.po;
+    }
+    return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  }
+
+  function bb(points, len, mult) {
+    const up = [], lo = [], mid = [];
+    for (let i = len - 1; i < points.length; i++) {
+      const w = points.slice(i - len + 1, i + 1).map(p => p.value);
+      const m = w.reduce((a, b) => a + b, 0) / len;
+      const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / len);
+      const t = points[i].time;
+      mid.push({ time: t, value: m }); up.push({ time: t, value: m + mult * sd }); lo.push({ time: t, value: m - mult * sd });
+    }
+    return { up, lo, mid };
+  }
+
+  const fmt = n => n.toLocaleString("en-US");
+  function table(id, agg) {
+    const last = agg[agg.length - 1];
+    const head = "<thead><tr><th>期限</th><th>看涨成交量</th><th>看跌成交量</th><th>成交量 PCR</th><th>看涨持仓量</th><th>看跌持仓量</th><th>持仓量 PCR</th></tr></thead>";
+    if (!last) { $(id).innerHTML = head; return; }
+    const body = BK.map(b => {
+      const x = last[1][b.k];
+      if (!x) return `<tr><td>${b.name}</td><td colspan="6" style="text-align:center;color:var(--dim)">无</td></tr>`;
+      const v = x.cv ? (x.pv / x.cv).toFixed(4) : "–", o = x.co ? (x.po / x.co).toFixed(4) : "–";
+      return `<tr><td>${b.name}</td><td>${fmt(x.cv)}</td><td>${fmt(x.pv)}</td><td>${v}</td><td>${fmt(x.co)}</td><td>${fmt(x.po)}</td><td>${o}</td></tr>`;
+    }).join("");
+    $(id).innerHTML = head + "<tbody>" + body + `</tbody><caption style="caption-side:top;text-align:left;color:var(--dim);padding:4px 0">${last[0]}</caption>`;
+  }
+
+  function render() {
+    const t1 = Math.max(1, +$("t1").value || 30), t2 = Math.max(t1 + 1, +$("t2").value || 120);
+    const minCv = Math.max(0, +$("minCv").value || 0);
+    const on = $("bbOnX").checked, sel = $("bbBucket").value;
+    const len = Math.max(2, +$("bbLen").value || 20), mult = +$("bbMult").value || 2;
+    for (const [metal, oiId, volId] of [["gold", "goldOI", "goldVol"], ["silver", "silverOI", "silverVol"]]) {
+      const agg = aggregate(metal, t1, t2);
+      for (const [pid, key] of [[oiId, "oi"], [volId, "vol"]]) {
+        const panel = P[pid];
+        const per = {};
+        BK.forEach(b => {
+          const pts = [];
+          for (const [d, o] of agg) {
+            const x = o[b.k]; if (!x) continue;
+            if (key === "oi") { if (x.co > 0) pts.push({ time: d, value: x.po / x.co }); }
+            else if (x.cv > 0 && x.cv >= minCv) pts.push({ time: d, value: x.pv / x.cv });
+          }
+          per[b.k] = pts; panel.lines[b.k].setData(pts);
+        });
+        const pts = per[sel] || [];
+        if (on && pts.length >= len) { const r = bb(pts, len, mult); panel.up.setData(r.up); panel.lo.setData(r.lo); panel.mid.setData(r.mid); }
+        else { panel.up.setData([]); panel.lo.setData([]); panel.mid.setData([]); }
+      }
+      table(metal === "gold" ? "tblXGold" : "tblXSilver", agg);
+    }
+    Object.values(P).forEach(p => p.chart.timeScale().fitContent());
+  }
+
+  ["t1", "t2", "minCv", "bbBucket", "bbOnX", "bbLen", "bbMult"].forEach(id => { $(id).onchange = render; });
+  render();
+
+  const charts = Object.values(P).map(p => p.chart);
+  let syncing = false;
+  charts.forEach((c, i) => c.timeScale().subscribeVisibleLogicalRangeChange(r => {
+    if (syncing || !r) return; syncing = true;
+    charts.forEach((o, j) => { if (j !== i) o.timeScale().setVisibleLogicalRange(r); });
+    syncing = false;
+  }));
+  addEventListener("resize", () => Object.values(P).forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
+})();
 </script>
 </body>
 </html>
