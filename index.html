@@ -133,11 +133,6 @@
     </div>
   </details>
 
-  <details class="dt" id="dtPiv">
-    <summary>价格顶底位置的 PCR 与相关性</summary>
-    <div class="dtc" id="pivBox"></div>
-  </details>
-
   <details class="dt" id="dtRecent">
     <summary>最近 30 个交易日明细（PG02B 汇总）</summary>
     <div class="dtc">
@@ -300,19 +295,6 @@ function zigzag(rows, thr) {
   piv.forEach(p => { if (p.i === 0) p.ok = false; });
   return piv;
 }
-function rank(a) {
-  const idx = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]); const r = new Array(a.length);
-  for (let i = 0; i < idx.length;) { let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++; const avg = (i + j) / 2; for (let k = i; k <= j; k++) r[idx[k][1]] = avg; i = j + 1; }
-  return r;
-}
-function spearman(x, y) {
-  if (x.length < 8) return null;
-  const rx = rank(x), ry = rank(y), n = x.length, mx = rx.reduce((a, b) => a + b, 0) / n, my = ry.reduce((a, b) => a + b, 0) / n;
-  let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (rx[i] - mx) * (ry[i] - my); sxx += (rx[i] - mx) ** 2; syy += (ry[i] - my) ** 2; }
-  return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
-}
-const clsr = c => c == null ? "" : (c > 0.25 ? "pos" : c < -0.25 ? "neg" : "");
-
 function makeView(m) {
   const P = PRICE[m.key] || [];
   const v = { m, P, pDates: P.map(r => r.time), PT: [], PS: [] };
@@ -349,22 +331,6 @@ function makeView(m) {
   return v;
 }
 
-function latestAtOrBefore(seq, ei) { let best = null; for (const r of seq) { if (r.ei <= ei) best = r; else break; } return best; }
-function seqValueAt(seq, k) { const r = seq.find(s => s.k === k); return r ? r.value : null; }
-
-function corrRow(v, name, seq, st) {
-  const cells = [];
-  for (const k of [5, 10, 20]) {
-    const x = [], y = [];
-    seq.forEach(r => { const pb = r.bb && r.bb.pb; if (pb == null || r.time < st.from || r.time > st.to) return; const j = r.ei + k; if (j >= v.P.length) return; x.push(pb); y.push(v.P[j].close / v.P[r.ei].close - 1); });
-    const c = spearman(x, y); cells.push(`<td class="${clsr(c)}">${c == null ? "–" : c.toFixed(2)} <span style="color:var(--dim)">(n=${x.length})</span></td>`);
-  }
-  const x = [], y = [];
-  seq.forEach(r => { if (r.k < 5 || r.time < st.from || r.time > st.to || r.ei < 5) return; const prev = seqValueAt(seq, r.k - 5); if (prev == null) return; x.push(r.value - prev); y.push(v.P[r.ei].close / v.P[r.ei - 5].close - 1); });
-  const c = spearman(x, y); cells.push(`<td class="${clsr(c)}">${c == null ? "–" : c.toFixed(2)} <span style="color:var(--dim)">(n=${x.length})</span></td>`);
-  return `<tr><td>${name}</td>${cells.join("")}</tr>`;
-}
-
 function renderView(v, st) {
   const m = v.m, k = m.key, modeName = st.mode === "oi" ? "持仓量" : "成交量";
   v.PT = prepare(v, obsTotal(m, st), st); v.PS = prepare(v, obsShort(m, st), st);
@@ -385,15 +351,6 @@ function renderView(v, st) {
   const sdata = lineData(v.PS, "v"), mk = [];
   if (st.expOn) EXPIRIES[k].forEach(e => { if (e < st.from || e > st.to) return; const p = sdata.find(d => d.time >= e); if (p && !mk.some(x => x.time === p.time)) mk.push({ time: p.time, value: p.value }); });
   mk.sort((a, b) => (a.time < b.time ? -1 : 1)); v.expDots.setData(mk);
-  // 表格
-  const rows = piv.map(p => {
-    const r = inRange[p.i], ei = r.i, a = latestAtOrBefore(v.PT, ei), b = latestAtOrBefore(v.PS, ei);
-    const cell = x => x ? `${fmt4(x.value)} <span style="color:var(--dim)">%B ${x.bb && x.bb.pb != null ? x.bb.pb.toFixed(2) : "–"}</span>` : "–";
-    return `<tr><td>${r.time}</td><td class="${p.t === "顶" ? "top" : "bot"}">${p.t}${p.ok ? "" : "（待确认）"}</td><td>${fmt1(p.v)}</td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
-  });
-  $("pv_" + k).innerHTML = `<tr><th>日期</th><th>类型</th><th>价格</th><th>总${modeName} PCR</th><th>短期${modeName} PCR</th></tr>` + (rows.join("") || `<tr><td colspan="5" style="text-align:center;color:var(--dim)">当前范围内没有符合条件的顶底（试试调小反转百分比）</td></tr>`);
-  $("cr_" + k).innerHTML = `<tr><th>PCR</th><th>%B ↔ 未来5日收益</th><th>%B ↔ 未来10日</th><th>%B ↔ 未来20日</th><th>5日变化 ↔ 同期5日收益</th></tr>` +
-    corrRow(v, `总${modeName} PCR`, v.PT, st) + corrRow(v, `短期${modeName} PCR`, v.PS, st);
 }
 
 const EXPIRIES = { gold: [], silver: [] };
@@ -482,9 +439,6 @@ async function boot() {
   for (const m of METALS) { try { PRICE[m.key] = parsePrice(await loadAny(m.priceFile)); } catch (e) { PRICE[m.key] = []; } }
   METALS.forEach(m => { EXPIRIES[m.key] = [...new Set(EXP.filter(r => r.metal === m.key && r.kind === "monthly" && r.expiry).map(r => r.expiry))].sort(); });
   METALS.forEach(m => { const v = makeView(m); if (v) VIEWS.push(v); });
-  // 顶底表和相关性表容器
-  $("pivBox").innerHTML = `<div class="hint">按"价格从高点回落（或从低点反弹）达到所设百分比"定义顶底；PCR 取当天已经能看到的最新值（受"PCR 延后"影响）。%B：0=布林下轨，1=上轨。相关性为当前日期范围内的 Spearman：①PCR 相对近期位置(%B)与之后 5/10/20 日收益；②PCR 的 5 日变化与同期 5 日收益。样本重叠、自相关很强，仅作线索。</div>` +
-    METALS.map(m => `<h2>${m.name} · 价格顶底位置的 PCR</h2><div class="tablewrap"><table id="pv_${m.key}"></table></div><h2>${m.name} · 相关性</h2><div class="tablewrap"><table id="cr_${m.key}"></table></div>`).join("");
   fillTable("tblGold", PCRROWS, "gold"); fillTable("tblSilver", PCRROWS, "silver");
   const last = PCRROWS[PCRROWS.length - 1];
   const priceLast = VIEWS.length ? VIEWS[0].pDates[VIEWS[0].pDates.length - 1] : "–";
