@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COMEX 黄金 / 白银期权 PCR</title>
 <style>
-  :root { --bg:#131722; --panel:#1e222d; --line:#2a2e39; --text:#d1d4dc; --dim:#868993; --up:#ef5350; --down:#26a69a; --pcr1:#ffb300; --pcr2:#29b6f6; }
+  :root { --bg:#131722; --panel:#1e222d; --line:#2a2e39; --text:#d1d4dc; --dim:#868993; --up:#ef5350; --down:#26a69a; --pcr1:#ffb300; --pcr2:#29b6f6; --pcr3:#26c6da; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
   .wrap { max-width:1500px; margin:0 auto; padding:14px 16px 40px; }
@@ -84,6 +84,7 @@
     <span class="sep"></span>
     <label title="日报在下一个交易日凌晨才发布，所以 PCR 应该延后 1 个交易日显示才没有未来函数。想看领先/滞后关系可以改这个数。">PCR 延后 <input type="number" id="lag" value="1" min="-10" max="20"> 日</label>
     <label title="短期 PCR 只统计标准月度期权中距到期不超过这个天数的合约（不含周度）">短期 ≤ <input type="number" id="t1" value="30" min="1" max="400"> 天</label>
+    <label title="中期 PCR 统计标准月度期权中距到期在 短期上限 与这个天数之间的合约（不含周度）">中期 ≤ <input type="number" id="t2" value="90" min="2" max="800"> 天</label>
     <span class="sep"></span>
     <label><input type="checkbox" id="bbOn" checked> 布林带</label>
     <label>周期 <input type="number" id="bbLen" value="20" min="2" max="120"></label>
@@ -103,7 +104,7 @@
     <div class="dtc">
       <div id="metaX">展开后加载…</div>
       <div class="controls">
-        <label>中期 ≤ <input type="number" id="t2" value="90" min="2" max="800"> 天（更远为长期；短期天数在上方控制条）</label>
+        <label style="color:var(--dim)">短期、中期天数在上方控制条（中期 = 短期上限 ~ 中期上限；更远为长期）</label>
         <label>近期合计 ≤ <input type="number" id="tR" value="90" min="2" max="800"> 天（含周度）</label>
         <label>成交量 PCR 最小看涨成交量 <input type="number" id="minCv" value="20" min="0" max="100000"></label>
         <label>布林带对象
@@ -237,7 +238,7 @@ function bollinger(vals, len, mult) {
 }
 function settings() {
   return { mode: document.querySelector('input[name="mode"]:checked').value, from: $("from").value, to: $("to").value,
-    lag: Math.round(+$("lag").value || 0), t1: Math.max(1, +$("t1").value || 30), minCv: Math.max(0, +$("minCv").value || 0),
+    lag: Math.round(+$("lag").value || 0), t1: Math.max(1, +$("t1").value || 30), t2: Math.max(2, +$("t2").value || 90), minCv: Math.max(0, +$("minCv").value || 0),
     bbOn: $("bbOn").checked, bbLen: Math.max(2, +$("bbLen").value || 20), bbMult: +$("bbMult").value || 2,
     pivOn: $("pivOn").checked, pivPct: Math.max(1, +$("pivPct").value || 8) / 100, expOn: $("expOn").checked, ovOn: $("ovOn").checked };
 }
@@ -247,12 +248,12 @@ function obsTotal(m, st) {
   for (const r of PCRROWS) { const x = r[m.key], v = st.mode === "oi" ? x.oi : x.vol; if (isFinite(v) && v > 0) out.push({ date: r.date, value: v }); }
   return out;
 }
-function obsShort(m, st) {
+function obsBucket(m, st, lo, hi) {
   const agg = new Map();
   for (const r of EXP) {
     if (r.metal !== m.key || r.kind !== "monthly" || !r.expiry) continue;
     const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
-    if (dte > st.t1) continue;
+    if (dte <= lo || dte > hi) continue;
     let a = agg.get(r.date); if (!a) agg.set(r.date, a = [0, 0, 0, 0]);
     a[0] += r.cv; a[1] += r.pv; a[2] += r.co; a[3] += r.po;
   }
@@ -263,6 +264,8 @@ function obsShort(m, st) {
   }
   return out;
 }
+const obsShort = (m, st) => obsBucket(m, st, -Infinity, st.t1);
+const obsMid = (m, st) => obsBucket(m, st, st.t1, Math.max(st.t1 + 1, st.t2));
 // 映射到该品种的价格交易日（含延后）
 function prepare(v, series, st) {
   const bbs = bollinger(series.map(r => r.value), st.bbLen, st.bbMult), out = [];
@@ -297,7 +300,7 @@ function zigzag(rows, thr) {
 }
 function makeView(m) {
   const P = PRICE[m.key] || [];
-  const v = { m, P, pDates: P.map(r => r.time), PT: [], PS: [] };
+  const v = { m, P, pDates: P.map(r => r.time), PT: [], PS: [], PM: [] };
   v.pIdx = new Map(v.pDates.map((d, i) => [d, i]));
   v.idxOnOrAfter = date => {
     if (v.pIdx.has(date)) return v.pIdx.get(date);
@@ -311,32 +314,36 @@ function makeView(m) {
   blk.innerHTML = `<h2 class="blkT">${m.name} · 价格 vs 期权 PCR</h2><div class="legend" id="lg_${k}"></div>
     <div class="card"><div class="ttl">${m.name}日线（${m.priceName}）· 红涨绿跌</div><div id="cp_${k}"></div></div>
     <div class="card"><div class="ttl"><i style="background:var(--pcr1)"></i><span id="tt_${k}"></span></div><div id="ct_${k}"></div></div>
-    <div class="card"><div class="ttl"><i style="background:var(--pcr2)"></i><span id="ts_${k}"></span><span class="exp">圆点 = 合约到期日（到期合约滚出，曲线会台阶式跳变）</span></div><div id="cs_${k}"></div></div>`;
+    <div class="card"><div class="ttl"><i style="background:var(--pcr2)"></i><span id="ts_${k}"></span><span class="exp">圆点 = 合约到期日（到期合约滚出，曲线会台阶式跳变）</span></div><div id="cs_${k}"></div></div>
+    <div class="card"><div class="ttl"><i style="background:var(--pcr3)"></i><span id="tm_${k}"></span><span class="exp">圆点 = 合约到期日（合约进入中期档/滚出时，曲线会台阶式跳变）</span></div><div id="cm_${k}"></div></div>`;
   $("blocks").appendChild(blk);
   if (!P.length) { $("lg_" + k).textContent = "价格数据未加载（data/" + m.priceFile.split("/").pop() + "）"; return null; }
-  v.cP = mkChart($("cp_" + k), 330); v.cT = mkChart($("ct_" + k), 190); v.cS = mkChart($("cs_" + k), 190);
+  v.cP = mkChart($("cp_" + k), 330); v.cT = mkChart($("ct_" + k), 190); v.cS = mkChart($("cs_" + k), 190); v.cM = mkChart($("cm_" + k), 190);
   v.cP.applyOptions({ leftPriceScale: { visible: false, borderColor: "#2a2e39", minimumWidth: 60 } });
   v.candle = v.cP.addCandlestickSeries({ upColor: "#ef5350", downColor: "#26a69a", borderUpColor: "#ef5350", borderDownColor: "#26a69a", wickUpColor: "#ef5350", wickDownColor: "#26a69a",
     priceFormat: { type: "price", precision: k === "gold" ? 1 : 2, minMove: k === "gold" ? 0.1 : 0.01 } });
   v.candle.setData(P);
-  // 隐藏的"日历"系列：保证三张图横轴一致，显示范围早于 PCR 第一个数据点时也不会出错
-  [v.cT, v.cS].forEach(c => c.addLineSeries({ visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }).setData(v.pDates.map(t => ({ time: t }))));
-  v.sT = pcrSeries(v.cT, "#ffb300"); v.sS = pcrSeries(v.cS, "#29b6f6");
+  // 隐藏的"日历"系列：保证四张图横轴一致，显示范围早于 PCR 第一个数据点时也不会出错
+  [v.cT, v.cS, v.cM].forEach(c => c.addLineSeries({ visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }).setData(v.pDates.map(t => ({ time: t }))));
+  v.sT = pcrSeries(v.cT, "#ffb300"); v.sS = pcrSeries(v.cS, "#29b6f6"); v.sM = pcrSeries(v.cM, "#26c6da");
+  v.expDotsM = v.cM.addLineSeries({ color: "#ffd180", lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 4, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, priceFormat: PF });
   v.expDots = v.cS.addLineSeries({ color: "#ffd180", lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 4, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, priceFormat: PF });
   const ov = c => v.cP.addLineSeries({ color: c, lineWidth: 2, priceScaleId: "left", priceFormat: PF, visible: false, lastValueVisible: false, priceLineVisible: false });
-  v.ovT = ov("#ffb300"); v.ovS = ov("#29b6f6");
+  v.ovT = ov("#ffb300"); v.ovS = ov("#29b6f6"); v.ovM = ov("#26c6da");
   ALLCH.push({ metal: k, el: $("cp_" + k), chart: v.cP, series: v.candle, get: t => { const r = v.priceByTime.get(t); return r ? r.close : null; } });
   ALLCH.push({ metal: k, el: $("ct_" + k), chart: v.cT, series: v.sT.line, get: t => { const r = known(v.PT, t); return r ? r.value : null; } });
   ALLCH.push({ metal: k, el: $("cs_" + k), chart: v.cS, series: v.sS.line, get: t => { const r = known(v.PS, t); return r ? r.value : null; } });
+  ALLCH.push({ metal: k, el: $("cm_" + k), chart: v.cM, series: v.sM.line, get: t => { const r = known(v.PM, t); return r ? r.value : null; } });
   return v;
 }
 
 function renderView(v, st) {
   const m = v.m, k = m.key, modeName = st.mode === "oi" ? "持仓量" : "成交量";
-  v.PT = prepare(v, obsTotal(m, st), st); v.PS = prepare(v, obsShort(m, st), st);
+  v.PT = prepare(v, obsTotal(m, st), st); v.PS = prepare(v, obsShort(m, st), st); v.PM = prepare(v, obsMid(m, st), st);
   $("tt_" + k).textContent = `总${modeName} PCR（全部标准月度到期月，不含周度）`;
   $("ts_" + k).textContent = `短期${modeName} PCR（标准月度期权，距到期 ≤${st.t1} 天，不含周度）`;
-  for (const [seq, s, o] of [[v.PT, v.sT, v.ovT], [v.PS, v.sS, v.ovS]]) {
+  $("tm_" + k).textContent = `中期${modeName} PCR（标准月度期权，距到期 ${st.t1}~${Math.max(st.t1 + 1, st.t2)} 天，不含周度）`;
+  for (const [seq, s, o] of [[v.PT, v.sT, v.ovT], [v.PS, v.sS, v.ovS], [v.PM, v.sM, v.ovM]]) {
     s.line.setData(lineData(seq, "v")); o.setData(lineData(seq, "v"));
     ["up", "lo", "mid"].forEach(key => s[key].setData(st.bbOn ? lineData(seq, key) : []));
     o.applyOptions({ visible: st.ovOn });
@@ -351,6 +358,9 @@ function renderView(v, st) {
   const sdata = lineData(v.PS, "v"), mk = [];
   if (st.expOn) EXPIRIES[k].forEach(e => { if (e < st.from || e > st.to) return; const p = sdata.find(d => d.time >= e); if (p && !mk.some(x => x.time === p.time)) mk.push({ time: p.time, value: p.value }); });
   mk.sort((a, b) => (a.time < b.time ? -1 : 1)); v.expDots.setData(mk);
+  const mdata = lineData(v.PM, "v"), mk2 = [];
+  if (st.expOn) EXPIRIES[k].forEach(e => { if (e < st.from || e > st.to) return; const p = mdata.find(d => d.time >= e); if (p && !mk2.some(x => x.time === p.time)) mk2.push({ time: p.time, value: p.value }); });
+  mk2.sort((a, b) => (a.time < b.time ? -1 : 1)); v.expDotsM.setData(mk2);
 }
 
 const EXPIRIES = { gold: [], silver: [] };
@@ -359,21 +369,21 @@ function updateLegends(t0, onlyMetal) {
     if (onlyMetal && v.m.key !== onlyMetal) return;     // 不联动时，只更新光标所在品种的图例
     let t = t0;
     if (!t || !v.priceByTime.has(t)) { const to = $("to").value; t = v.priceByTime.has(to) ? to : (v.pDates[v.pDates.length - 1]); }
-    const p = v.priceByTime.get(t), a = known(v.PT, t), b = known(v.PS, t);
+    const p = v.priceByTime.get(t), a = known(v.PT, t), b = known(v.PS, t), c = known(v.PM, t);
     const pb = x => x && x.bb && x.bb.pb != null ? ` <span style="color:var(--dim)">%B ${x.bb.pb.toFixed(2)}</span>` : "";
     $("lg_" + v.m.key).innerHTML = `<span>日期 <b>${t}</b></span>` + (p ? `<span>开 <b>${fmt1(p.open)}</b> 高 <b>${fmt1(p.high)}</b> 低 <b>${fmt1(p.low)}</b> 收 <b>${fmt1(p.close)}</b></span>` : "") +
-      `<span style="color:var(--pcr1)">总PCR <b>${a ? fmt4(a.value) : "–"}</b>${pb(a)}</span><span style="color:var(--pcr2)">短期PCR <b>${b ? fmt4(b.value) : "–"}</b>${pb(b)}</span>` +
-      `<span style="color:var(--dim)">（PCR 数据日：${a ? a.date : "–"} / ${b ? b.date : "–"}）</span>`;
+      `<span style="color:var(--pcr1)">总PCR <b>${a ? fmt4(a.value) : "–"}</b>${pb(a)}</span><span style="color:var(--pcr2)">短期PCR <b>${b ? fmt4(b.value) : "–"}</b>${pb(b)}</span><span style="color:var(--pcr3)">中期PCR <b>${c ? fmt4(c.value) : "–"}</b>${pb(c)}</span>` +
+      `<span style="color:var(--dim)">（PCR 数据日：${a ? a.date : "–"} / ${b ? b.date : "–"} / ${c ? c.date : "–"}）</span>`;
   });
 }
 let syncC = false, ACTIVE = null;
-function groupOf(entry) { return ALLCH.filter(e => e.metal === entry.metal); }   // 只在同一品种的三张图之间联动
+function groupOf(entry) { return ALLCH.filter(e => e.metal === entry.metal); }   // 只在同一品种的四张图之间联动
 function applyRange() {
   const r = { from: $("from").value, to: $("to").value };
   ACTIVE = null;
   ALLCH.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (err) { e.chart.timeScale().fitContent(); } });
 }
-// ── 平移 / 缩放（按钮 + 键盘）：对每个品种，以它的价格图的当前范围为基准，统一设置三张图 ──
+// ── 平移 / 缩放（按钮 + 键盘）：对每个品种，以它的价格图的当前范围为基准，统一设置四张图 ──
 function logicalOf(k) { const e = ALLCH.find(x => x.metal === k); return e ? e.chart.timeScale().getVisibleLogicalRange() : null; }
 function setGroup(k, from, to) { ACTIVE = null; ALLCH.filter(e => e.metal === k).forEach(e => e.chart.timeScale().setVisibleLogicalRange({ from, to })); }
 function panBars(dir, one) {      // dir=-1 更早，+1 更新；one=true 只移一根
@@ -446,12 +456,12 @@ async function boot() {
   $("from").value = PCRROWS[0].date; $("to").value = priceLast;
   if (VIEWS.length) { $("from").min = VIEWS[0].pDates[0]; $("to").max = priceLast; }
   ["from", "to"].forEach(id => $(id).onchange = () => renderAll(true));
-  ["lag", "t1", "bbOn", "bbLen", "bbMult", "pivOn", "pivPct", "expOn", "ovOn", "minCv"].forEach(id => $(id).onchange = () => renderAll(false));
+  ["lag", "t1", "t2", "bbOn", "bbLen", "bbMult", "pivOn", "pivPct", "expOn", "ovOn", "minCv"].forEach(id => $(id).onchange = () => renderAll(false));
   document.querySelectorAll('input[name="mode"]').forEach(r => r.onchange = () => renderAll(false));
   $("rngPcr").onclick = () => { $("from").value = PCRROWS[0].date; $("to").value = priceLast; renderAll(true); };
   $("rngAll").onclick = () => { if (VIEWS.length) $("from").value = VIEWS[0].pDates[0]; $("to").value = priceLast; renderAll(true); };
   bindSync();
-  addEventListener("resize", () => VIEWS.forEach(v => [[v.cP, "cp_"], [v.cT, "ct_"], [v.cS, "cs_"]].forEach(([c, p]) => c.applyOptions({ width: $(p + v.m.key).clientWidth }))));
+  addEventListener("resize", () => VIEWS.forEach(v => [[v.cP, "cp_"], [v.cT, "ct_"], [v.cS, "cs_"], [v.cM, "cm_"]].forEach(([c, p]) => c.applyOptions({ width: $(p + v.m.key).clientWidth }))));
   renderAll(true);
 }
 boot();
