@@ -103,6 +103,14 @@
 
   <div id="blocks"></div>
 
+  <details class="dt" id="dtCP">
+    <summary>看涨 / 看跌期权持仓量（黄金、白银各四图联动：日线 / 总 / 短期 / 中期）</summary>
+    <div class="dtc">
+      <div class="note" style="margin:0 0 8px">红线 = 看涨期权持仓量（Call OI），绿线 = 看跌期权持仓量（Put OI）；短期 / 中期的天数、PCR 延后天数跟随页面上方的设置。光标停留会显示具体数值；黄金在上、白银在下，各自四张图联动。<br>标记（相对前一个交易日）：<span style="color:#ef5350">▲ 偏多</span> = 看涨持仓量增加 且 看跌持仓量减少；<span style="color:#26a69a">▼ 偏空</span> = 看涨持仓量减少 且 看跌持仓量增加。<label style="margin-left:12px"><input type="checkbox" id="cpMk" checked> 显示标记</label>　<span id="cpMkN" style="color:var(--dim)"></span></div>
+      <div id="cpWrap"></div>
+    </div>
+  </details>
+
   <details class="dt" id="dtSplit">
     <summary>按到期期限拆分 PCR（近期合计 / 周度 / 短期 / 中期 / 长期）</summary>
     <div class="dtc">
@@ -481,6 +489,7 @@ function renderAll(resetRange) {
   if (resetRange) applyRange();
   updateLegends(null);
   if (window.splitRender) window.splitRender();
+  if (window.cpRender) window.cpRender(resetRange);
 }
 function fillTable(id, rows, metal) {
   const rs = rows.filter(r => r[metal] && isFinite(r[metal].vol) && isFinite(r[metal].oi)).slice(-30).reverse();
@@ -636,6 +645,148 @@ boot();
       syncing = false;
     }));
     addEventListener("resize", () => Object.values(P).forEach(p => p.chart.applyOptions({ width: p.el.clientWidth })));
+  }
+})();
+</script>
+<script>
+// ───────────────────────── 看涨 / 看跌期权持仓量（黄金、白银各四图联动；展开时才创建图表） ─────────────────────────
+(function () {
+  const CALL = "#ef5350", PUT = "#26a69a", IF = { type: "price", precision: 0, minMove: 1 };
+  const det = $("dtCP"), M = {};      // M[key] = { v, charts:[...], data:{t,s,m}, ... }
+  let inited = false, HOV = null, ACT = null, syncing = false;
+  det.addEventListener("toggle", () => { if (det.open && !inited) init(); });
+
+  function init() {
+    if (!VIEWS.length) return;
+    inited = true;
+    METALS.forEach(m => { const v = VIEWS.find(x => x.m.key === m.key); if (v) build(m, v); });
+    window.cpRender = render; $("cpMk").onchange = () => render(false); render(true);
+  }
+  function at(arr, t) {   // arr 按 time 升序，取 time ≤ t 的最后一个
+    let lo = 0, hi = arr.length - 1, r = null;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (arr[mid].time <= t) { r = arr[mid]; lo = mid + 1; } else hi = mid - 1; }
+    return r;
+  }
+  function build(m, v) {
+    const k = m.key, d = { m, v, charts: [], data: { t: [], s: [], m: [] } }; M[k] = d;
+    const sec = document.createElement("section"); sec.className = "blk";
+    sec.innerHTML = `<h2 class="blkT">${m.name} · 看涨 / 看跌期权持仓量</h2><div class="legend" id="cpl_${k}"></div>
+      <div class="card"><div class="ttl">${m.name}日线（${m.priceName}）· 红涨绿跌</div><div id="cpP_${k}"></div></div>
+      <div class="card"><div class="ttl"><i style="background:${CALL}"></i>看涨 <i style="background:${PUT}"></i>看跌　总持仓量（全部标准月度到期月，不含周度）</div><div id="cpT_${k}"></div></div>
+      <div class="card"><div class="ttl"><i style="background:${CALL}"></i>看涨 <i style="background:${PUT}"></i>看跌　<span id="cpTs_${k}"></span></div><div id="cpS_${k}"></div></div>
+      <div class="card"><div class="ttl"><i style="background:${CALL}"></i>看涨 <i style="background:${PUT}"></i>看跌　<span id="cpTm_${k}"></span></div><div id="cpM_${k}"></div></div>`;
+    $("cpWrap").appendChild(sec);
+    const mkc = (id, h) => mkChart($(id + "_" + k), h);
+    const cp = mkc("cpP", 280), cT = mkc("cpT", 190), cS = mkc("cpS", 190), cM = mkc("cpM", 190);
+    const candle = cp.addCandlestickSeries({ upColor: "#ef5350", downColor: "#26a69a", borderUpColor: "#ef5350", borderDownColor: "#26a69a", wickUpColor: "#ef5350", wickDownColor: "#26a69a",
+      priceFormat: { type: "price", precision: k === "gold" ? 1 : 2, minMove: k === "gold" ? 0.1 : 0.01 } });
+    candle.setData(v.P);
+    const two = c => ({ call: c.addLineSeries({ color: CALL, lineWidth: 2, priceFormat: IF, priceLineVisible: false }), put: c.addLineSeries({ color: PUT, lineWidth: 2, priceFormat: IF, priceLineVisible: false }) });
+    d.sT = two(cT); d.sS = two(cS); d.sM = two(cM); d.candle = candle;
+    [cT, cS, cM].forEach(c => c.addLineSeries({ visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }).setData(v.pDates.map(t => ({ time: t }))));
+    const reg = (kind, id, chart, series, get) => d.charts.push({ kind, metal: k, el: $(id + "_" + k), chart, series, get });
+    reg("p", "cpP", cp, candle, t => { const r = v.priceByTime.get(t); return r ? r.close : null; });
+    reg("t", "cpT", cT, d.sT.call, t => { const r = at(d.data.t, t); return r ? r.call : null; });
+    reg("s", "cpS", cS, d.sS.call, t => { const r = at(d.data.s, t); return r ? r.call : null; });
+    reg("m", "cpM", cM, d.sM.call, t => { const r = at(d.data.m, t); return r ? r.call : null; });
+    d.charts.forEach(e => {
+      e.el.style.position = "relative"; e.tip = document.createElement("div"); e.tip.className = "tip"; e.el.appendChild(e.tip);
+      e.el.addEventListener("mouseenter", () => { HOV = e; });
+      e.el.addEventListener("mouseleave", () => { if (HOV === e) HOV = null; e.tip.style.display = "none"; });
+      ["mouseenter", "mousedown", "touchstart", "wheel"].forEach(ev => e.el.addEventListener(ev, () => { ACT = e; }, { passive: true }));
+      e.chart.timeScale().subscribeVisibleLogicalRangeChange(r => { if (!r || ACT !== e) return; d.charts.forEach(o => { if (o !== e) o.chart.timeScale().setVisibleLogicalRange(r); }); });
+      e.chart.subscribeCrosshairMove(p => {
+        if (syncing) return;
+        if (HOV && HOV !== e) return;      // 联动产生的光标事件不处理，只响应鼠标真正所在的那张图
+        const t = p.time || null; legend(k, t); tip(e, p, d);
+        syncing = true;
+        d.charts.forEach(o => { if (o === e) return; if (!t) { o.chart.clearCrosshairPosition(); return; } const val = o.get(t); if (val == null) o.chart.clearCrosshairPosition(); else o.chart.setCrosshairPosition(val, t, o.series); });
+        syncing = false;
+      });
+    });
+    addEventListener("resize", () => d.charts.forEach(e => e.chart.applyOptions({ width: e.el.clientWidth })));
+  }
+  // 把"报告日 → 持仓量"映射到该品种的价格交易日（含 PCR 延后）
+  function mapTo(v, rows, lag) {
+    const out = [];
+    for (const r of rows) { const base = v.idxOnOrAfter(r.date); if (base < 0) continue; const ei = base + lag; if (ei < 0 || ei >= v.pDates.length) continue; out.push({ time: v.pDates[ei], date: r.date, call: r.call, put: r.put }); }
+    return out;
+  }
+  function bucket(key, lo, hi) {
+    const agg = new Map();
+    for (const r of EXP) {
+      if (r.metal !== key || r.kind !== "monthly" || !r.expiry) continue;
+      const dte = (Date.parse(r.expiry) - Date.parse(r.date)) / 864e5;
+      if (dte <= lo || dte > hi) continue;
+      let a = agg.get(r.date); if (!a) agg.set(r.date, a = { call: 0, put: 0 });
+      a.call += r.co; a.put += r.po;
+    }
+    return [...agg.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1)).filter(([, a]) => a.call > 0 || a.put > 0).map(([date, a]) => ({ date, call: a.call, put: a.put }));
+  }
+  // 多空标记：看涨↑且看跌↓ = 偏多；看涨↓且看跌↑ = 偏空（与前一个数据日比较，持平不算）
+  function sig(arr, i) {
+    if (i < 1) return 0;
+    const dc = arr[i].call - arr[i - 1].call, dp = arr[i].put - arr[i - 1].put;
+    return dc > 0 && dp < 0 ? 1 : dc < 0 && dp > 0 ? -1 : 0;
+  }
+  function setMk(series, arr, on) {
+    const mk = [];
+    if (on) arr.forEach((r, i) => { const g = sig(arr, i); if (g) mk.push({ time: r.time, position: g > 0 ? "belowBar" : "aboveBar", shape: g > 0 ? "arrowUp" : "arrowDown", color: g > 0 ? CALL : PUT, size: 1 }); });
+    series.setMarkers(mk);
+    return mk.length;
+  }
+  function render(reset) {
+    if (!inited) return;
+    const st = settings(), t2 = Math.max(st.t1 + 1, st.t2);
+    METALS.forEach(m => {
+      const d = M[m.key]; if (!d) return; const v = d.v;
+      const tot = PCRROWS.map(r => ({ date: r.date, call: r[m.key].co, put: r[m.key].po })).filter(r => isFinite(r.call) && isFinite(r.put));
+      d.data.t = mapTo(v, tot, st.lag); d.data.s = mapTo(v, bucket(m.key, -Infinity, st.t1), st.lag); d.data.m = mapTo(v, bucket(m.key, st.t1, t2), st.lag);
+      for (const [rows, s] of [[d.data.t, d.sT], [d.data.s, d.sS], [d.data.m, d.sM]]) {
+        s.call.setData(rows.map(r => ({ time: r.time, value: r.call }))); s.put.setData(rows.map(r => ({ time: r.time, value: r.put })));
+      }
+      const on = $("cpMk").checked; let nUp = 0, nDn = 0;
+      for (const [rows, s] of [[d.data.t, d.sT], [d.data.s, d.sS], [d.data.m, d.sM]]) {
+        setMk(s.call, rows, on); rows.forEach((r, i) => { const g = sig(rows, i); if (g > 0) nUp++; else if (g < 0) nDn++; });
+      }
+      d.nUp = nUp; d.nDn = nDn;
+      $("cpTs_" + m.key).textContent = `短期持仓量（标准月度期权，距到期 ≤${st.t1} 天，不含周度）`;
+      $("cpTm_" + m.key).textContent = `中期持仓量（标准月度期权，距到期 ${st.t1}~${t2} 天，不含周度）`;
+      if (reset) { const r = { from: $("from").value, to: $("to").value }; ACT = null; d.charts.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (x) { e.chart.timeScale().fitContent(); } }); }
+      legend(m.key, null);
+    });
+    $("cpMkN").textContent = METALS.map(m => M[m.key] ? `${m.name}：偏多 ${M[m.key].nUp} 次 / 偏空 ${M[m.key].nDn} 次（三张持仓量图合计）` : "").join("　");
+  }
+  const n0 = x => x == null ? "–" : Math.round(x).toLocaleString("en-US");
+  function legend(k, t) {
+    const d = M[k]; if (!d) return;
+    const last = x => x[x.length - 1] ? x[x.length - 1].time : null;
+    const tt = t || last(d.data.t) || d.v.pDates[d.v.pDates.length - 1];
+    const part = (name, arr) => { const r = at(arr, tt); return `<span>${name} 看涨 <b style="color:${CALL}">${r ? n0(r.call) : "–"}</b> 看跌 <b style="color:${PUT}">${r ? n0(r.put) : "–"}</b></span>`; };
+    $("cpl_" + k).innerHTML = `<span>日期 <b>${tt}</b></span>` + part("总", d.data.t) + part("短期", d.data.s) + part("中期", d.data.m);
+  }
+  function tip(e, p, d) {
+    const el = e.tip;
+    if (!p.time || !p.point || p.point.x < 0 || p.point.y < 0) { el.style.display = "none"; return; }
+    const t = p.time, row = (a, b) => `<div class="r"><span>${a}</span><span>${b}</span></div>`;
+    let h = `<div class="h">${d.m.name} · ${t} ${WD[new Date(t + "T00:00:00Z").getUTCDay()]}</div>`;
+    if (e.kind === "p") {
+      const r = d.v.priceByTime.get(t);
+      if (!r) h += row("当日无期货行情", "");
+      else { const c = (r.close / r.open - 1) * 100; h += row("开", fmt1(r.open)) + row("高", fmt1(r.high)) + row("低", fmt1(r.low)) + row("收", `<b>${fmt1(r.close)}</b>`) + row("日内涨跌", `<span style="color:${c >= 0 ? "var(--up)" : "var(--down)"}">${c >= 0 ? "+" : ""}${c.toFixed(2)}%</span>`); }
+    } else {
+      const arr = d.data[e.kind], r = at(arr, t), i = r ? arr.indexOf(r) : -1, pv = i > 0 ? arr[i - 1] : null;
+      const nm = { t: "总", s: "短期", m: "中期" }[e.kind], dl = (a, b) => b == null ? "" : `（较前一日 ${a - b > 0 ? "+" : ""}${n0(a - b)}）`;
+      if (!r) h += row("该日之前没有数据", "");
+      else h += row(`<span style="color:${CALL}">●</span> ${nm}看涨持仓量`, `<b>${n0(r.call)}</b> ${dl(r.call, pv && pv.call)}`) + row(`<span style="color:${PUT}">●</span> ${nm}看跌持仓量`, `<b>${n0(r.put)}</b> ${dl(r.put, pv && pv.put)}`) +
+        row("PCR（看跌 ÷ 看涨）", `<b>${r.call > 0 ? (r.put / r.call).toFixed(4) : "–"}</b>`) + row("数据日", r.date) +
+        row("多空信号", ((g) => g > 0 ? `<b style="color:${CALL}">▲ 偏多（看涨↑ 看跌↓）</b>` : g < 0 ? `<b style="color:${PUT}">▼ 偏空（看涨↓ 看跌↑）</b>` : "–")(sig(arr, i)));
+    }
+    d.charts.forEach(o => { if (o.tip !== el) o.tip.style.display = "none"; });
+    el.innerHTML = h; el.style.display = "block";
+    const W = e.el.clientWidth, H = e.el.clientHeight, w = el.offsetWidth, ht = el.offsetHeight;
+    let x = p.point.x + 18, y = p.point.y - ht / 2; if (x + w > W - 4) x = p.point.x - w - 18;
+    el.style.left = Math.max(2, x) + "px"; el.style.top = Math.max(2, Math.min(H - ht - 2, y)) + "px";
   }
 })();
 </script>
