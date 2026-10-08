@@ -752,6 +752,11 @@ boot();
       d.nUp = nUp; d.nDn = nDn;
       $("cpTs_" + m.key).textContent = `短期持仓量（标准月度期权，距到期 ≤${st.t1} 天，不含周度）`;
       $("cpTm_" + m.key).textContent = `中期持仓量（标准月度期权，距到期 ${st.t1}~${t2} 天，不含周度）`;
+      // 价格顶底标记：和上方主图一致（开关、反转幅度、日期范围都跟随页面上方的设置）
+      const inRange = v.P.map((r, i) => ({ ...r, i })).filter(r => r.time >= st.from && r.time <= st.to);
+      const piv = st.pivOn ? zigzag(inRange, st.pivPct) : [];
+      d.candle.setMarkers(piv.map(p => ({ time: inRange[p.i].time, position: p.t === "顶" ? "aboveBar" : "belowBar", shape: p.t === "顶" ? "arrowDown" : "arrowUp",
+        color: p.ok ? (p.t === "顶" ? "#ff5252" : "#00e676") : "#b0bec5", text: `${p.t}${p.ok ? "" : "?"} ${Math.round(p.v)}` })));
       if (reset) { const r = { from: $("from").value, to: $("to").value }; ACT = null; d.charts.forEach(e => { try { e.chart.timeScale().setVisibleRange(r); } catch (x) { e.chart.timeScale().fitContent(); } }); }
       legend(m.key, null);
     });
