@@ -56,6 +56,7 @@
   .top { color:var(--up); } .bot { color:var(--down); }
   .pos { color:#ff8a80; } .neg { color:#69f0ae; }
   .hint { color:var(--dim); font-size:12px; margin:4px 0 8px; }
+  .nxt { margin-left:14px; color:#ffd180; font-weight:600; }
   .tip { position:absolute; z-index:20; pointer-events:none; display:none; min-width:170px; background:rgba(19,23,34,.94); border:1px solid #4a5163; border-radius:6px; padding:8px 10px; font-size:12px; line-height:1.7; box-shadow:0 4px 14px rgba(0,0,0,.45); white-space:nowrap; }
   .tip .h { color:var(--dim); border-bottom:1px solid var(--line); margin-bottom:3px; padding-bottom:2px; }
   .tip .r { display:flex; justify-content:space-between; gap:18px; } .tip .r span:first-child { color:var(--dim); } .tip .big { font-size:14px; font-weight:700; }
@@ -318,8 +319,8 @@ function makeView(m) {
   blk.innerHTML = `<h2 class="blkT">${m.name} · 价格 vs 期权 PCR</h2><div class="legend" id="lg_${k}"></div>
     <div class="card"><div class="ttl">${m.name}日线（${m.priceName}）· 红涨绿跌</div><div id="cp_${k}"></div></div>
     <div class="card"><div class="ttl"><i style="background:var(--pcr1)"></i><span id="tt_${k}"></span></div><div id="ct_${k}"></div></div>
-    <div class="card"><div class="ttl"><i style="background:var(--pcr2)"></i><span id="ts_${k}"></span><span class="exp">圆点 = 合约到期日（到期合约滚出，曲线会台阶式跳变）</span></div><div id="cs_${k}"></div></div>
-    <div class="card"><div class="ttl"><i style="background:var(--pcr3)"></i><span id="tm_${k}"></span><span class="exp">圆点 = 合约到期日（合约进入中期档/滚出时，曲线会台阶式跳变）</span></div><div id="cm_${k}"></div></div>`;
+    <div class="card"><div class="ttl"><i style="background:var(--pcr2)"></i><span id="ts_${k}"></span><span class="exp">圆点 = 合约到期日（到期合约滚出，曲线会台阶式跳变）</span><span class="nxt" id="nx_s_${k}"></span></div><div id="cs_${k}"></div></div>
+    <div class="card"><div class="ttl"><i style="background:var(--pcr3)"></i><span id="tm_${k}"></span><span class="exp">圆点 = 合约到期日（合约进入中期档/滚出时，曲线会台阶式跳变）</span><span class="nxt" id="nx_m_${k}"></span></div><div id="cm_${k}"></div></div>`;
   $("blocks").appendChild(blk);
   if (!P.length) { $("lg_" + k).textContent = "价格数据未加载（data/" + m.priceFile.split("/").pop() + "）"; return null; }
   v.cP = mkChart($("cp_" + k), 330); v.cT = mkChart($("ct_" + k), 190); v.cS = mkChart($("cs_" + k), 190); v.cM = mkChart($("cm_" + k), 190);
@@ -368,6 +369,20 @@ function renderView(v, st) {
 }
 
 const EXPIRIES = { gold: [], silver: [] };
+const EXPNAME = { gold: new Map(), silver: new Map() };
+// 在两张 PCR 图的标题后面备注"下一个合约到期日"：取今天（含）之后最近的一个到期日；到期后自动滚动到下一个月
+function updateNext() {
+  const d = new Date(), today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  METALS.forEach(m => {
+    const list = EXPIRIES[m.key], i = list.findIndex(e => e >= today);
+    let txt = "";
+    if (i >= 0) {
+      const e = list[i], days = Math.round((Date.parse(e) - Date.parse(today)) / 864e5), nm = EXPNAME[m.key].get(e);
+      txt = `下一个合约到期日：${e}（${nm ? nm + "合约，" : ""}${WD[new Date(e + "T00:00:00Z").getUTCDay()]}，${days === 0 ? "今天到期" : "还有 " + days + " 天"}）`;
+    }
+    ["s", "m"].forEach(x => { const el = $("nx_" + x + "_" + m.key); if (el) el.textContent = txt; });
+  });
+}
 function updateLegends(t0, onlyMetal) {
   VIEWS.forEach(v => {
     if (onlyMetal && v.m.key !== onlyMetal) return;     // 不联动时，只更新光标所在品种的图例
@@ -401,6 +416,7 @@ function tipHtml(e, t) {
 function showTip(e, p) {
   const tip = e.tip;
   if (!p.time || !p.point || p.point.x < 0 || p.point.y < 0) { tip.style.display = "none"; return; }
+  ALLCH.forEach(o => { if (o !== e && o.tip) o.tip.style.display = "none"; });
   tip.innerHTML = tipHtml(e, p.time); tip.style.display = "block";
   const W = e.el.clientWidth, H = e.el.clientHeight, w = tip.offsetWidth, h = tip.offsetHeight;
   let x = p.point.x + 18, y = p.point.y - h / 2;
@@ -483,6 +499,7 @@ async function boot() {
   } catch (e) { $("meta").textContent = ""; const el = $("err"); el.style.display = "block"; el.textContent = "加载失败：" + e.message; return; }
   for (const m of METALS) { try { PRICE[m.key] = parsePrice(await loadAny(m.priceFile)); } catch (e) { PRICE[m.key] = []; } }
   METALS.forEach(m => { EXPIRIES[m.key] = [...new Set(EXP.filter(r => r.metal === m.key && r.kind === "monthly" && r.expiry).map(r => r.expiry))].sort(); });
+  METALS.forEach(m => { EXPNAME[m.key] = new Map(EXP.filter(r => r.metal === m.key && r.kind === "monthly" && r.expiry).map(r => [r.expiry, r.month])); });
   METALS.forEach(m => { const v = makeView(m); if (v) VIEWS.push(v); });
   fillTable("tblGold", PCRROWS, "gold"); fillTable("tblSilver", PCRROWS, "silver");
   const last = PCRROWS[PCRROWS.length - 1];
@@ -498,6 +515,7 @@ async function boot() {
   bindSync();
   addEventListener("resize", () => VIEWS.forEach(v => [[v.cP, "cp_"], [v.cT, "ct_"], [v.cS, "cs_"], [v.cM, "cm_"]].forEach(([c, p]) => c.applyOptions({ width: $(p + v.m.key).clientWidth }))));
   renderAll(true);
+  updateNext();
 }
 boot();
 </script>
