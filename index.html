@@ -516,7 +516,12 @@ async function boot() {
   fillTable("tblGold", PCRROWS, "gold"); fillTable("tblSilver", PCRROWS, "silver");
   const last = PCRROWS[PCRROWS.length - 1];
   const priceLast = VIEWS.length ? VIEWS[0].pDates[VIEWS[0].pDates.length - 1] : "–";
-  $("meta").innerHTML = `PCR 数据截至 <b>${last.date}</b> | 共 <b>${PCRROWS.length}</b> 个交易日 | 价格截至 <b>${priceLast}</b>`;
+  // 页面更新时间：data/updated.txt 由自动更新任务在"数据有变化"时写入（UTC），这里换成北京时间显示；读不到就不显示
+  let stamp = "";
+  try { const u = (await loadAny("data/updated.txt")).trim().match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+    if (u) { const d = new Date(Date.UTC(+u[1], +u[2] - 1, +u[3], +u[4] + 8, +u[5])), p2 = n => String(n).padStart(2, "0");
+      stamp = ` | 页面更新于 <b>${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}</b>（北京时间）`; } } catch (e) {}
+  $("meta").innerHTML = `PCR 数据截至 <b>${last.date}</b> | 共 <b>${PCRROWS.length}</b> 个交易日 | 价格截至 <b>${priceLast}</b>${stamp}`;
   $("from").value = PCRROWS[0].date; $("to").value = priceLast;
   if (VIEWS.length) { $("from").min = VIEWS[0].pDates[0]; $("to").max = priceLast; }
   ["from", "to"].forEach(id => $(id).onchange = () => renderAll(true));

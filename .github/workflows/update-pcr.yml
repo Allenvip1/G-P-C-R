@@ -26,6 +26,9 @@ jobs:
       - name: 抓取金价、银价日线（Yahoo，失败只告警）
         continue-on-error: true
         run: python scripts/fetch_price.py
+      - name: 写入页面更新时间（只有数据真的变了才写，避免空提交触发多余的部署）
+        run: |
+          if ! git diff --quiet -- data/; then date -u '+%Y-%m-%d %H:%M UTC' > data/updated.txt; fi
       - name: Commit
         run: |
           git config user.name "pcr-bot"
