@@ -8,6 +8,11 @@ on:
     - cron: "23 16 * * 1-5"   # 北京时间次日 00:23，抓最终版并覆盖
   workflow_dispatch:
 
+# 同一时间只跑一个：GitHub 定时任务常被攒到一起同时触发，排队执行可避免两个任务同时推送互相撞车
+concurrency:
+  group: update-pcr
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -38,6 +43,7 @@ jobs:
             echo "no changes"
           else
             git commit -m "update PCR $(date -u +%F)"
+            git pull --rebase
             git push
           fi
       - name: CME 抓取失败时把任务标红
